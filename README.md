@@ -2,7 +2,7 @@
 
 My collection of Windhawk mods:
 
-- Start Button Actions (start-button-actions)
+- [Start Button Actions](https://github.com/Asteski/windhawk-mods/blob/main/mods/asteski-start-button-actions.wh.cpp)
 
 Future plans:
 
