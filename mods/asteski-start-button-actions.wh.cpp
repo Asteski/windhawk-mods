@@ -62,6 +62,7 @@ The mod installs low-level keyboard and mouse hooks that monitor Start button cl
 - Can be safely disabled/enabled without system restart
 
 ## Issues
+
 - Custom action bound to the Windows key doesn’t activate on the first attempt when an elevated window is in focus
 
 */
