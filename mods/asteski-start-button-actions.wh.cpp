@@ -2,11 +2,12 @@
 // @id           start-button-actions
 // @name         Start Button Actions
 // @description  Assign custom actions to Start button clicks and Windows key press
-// @version      0.1.0-beta
+// @version      1.0.0-prerelease
 // @author       Asteski
 // @github       https://github.com/Asteski
 // @include      explorer.exe
 // @compilerOptions -lgdi32 -luser32 -lshell32 -ladvapi32 -lole32
+// @architecture x86-64
 // ==/WindhawkMod==
 
 // ==WindhawkModReadme==
@@ -162,6 +163,7 @@ DWORD g_hookThreadId = 0;
 HANDLE g_hookStartEvent = nullptr;
 HWND g_startButtonHwnd = nullptr;
 RECT g_startButtonRect = {0};
+std::atomic<bool> g_hotkeysDisabled{false}; // Track if we've disabled shell hotkeys
 // No startup grace period needed; handle first key immediately
 
 // Settings
@@ -178,6 +180,25 @@ std::string g_startButtonShiftLeftClickCommand = "taskmgr.exe";
 std::string g_startButtonCtrlLeftClickAction = "default";
 std::string g_startButtonCtrlLeftClickCommand = "notepad.exe";
 int g_keyTimeout = 150;
+
+// Original RegisterHotKey function pointer
+using RegisterHotKey_t = decltype(&RegisterHotKey);
+RegisterHotKey_t g_pOriginalRegisterHotKey = nullptr;
+
+// Hooked RegisterHotKey to prevent shell from registering Win key and Ctrl+Esc
+BOOL WINAPI RegisterHotKeyHook(HWND hWnd, int id, UINT fsModifiers, UINT vk) {
+    // Block Win key (MOD_WIN + vk=0) and Ctrl+Esc if in custom mode
+    if (g_windowsKeyAction == "custom") {
+        if ((fsModifiers == MOD_WIN && vk == 0) || 
+            (fsModifiers == MOD_CONTROL && vk == VK_ESCAPE)) {
+            Wh_Log(L"Windows Key Actions: Blocked RegisterHotKey (mod=%u, vk=%u)", fsModifiers, vk);
+            return FALSE; // Pretend it failed
+        }
+    }
+    
+    // Allow other hotkeys through
+    return g_pOriginalRegisterHotKey(hWnd, id, fsModifiers, vk);
+}
 
 // Forward declarations
 LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam);
@@ -197,6 +218,66 @@ void CloseStartMenuIfOpen();
 void SendVirtualKey(WORD vk, bool down);
 void ClickStartButton();
 void UpdateStartButtonInfo();
+void DisableShellHotkeys();
+void RestoreShellHotkeys();
+
+// APC callback to unregister hotkeys from the correct thread context
+void NTAPI UnregisterHotkeysAPC(ULONG_PTR Parameter) {
+    UnregisterHotKey(NULL, 1);  // Win key
+    UnregisterHotKey(NULL, 2);  // Ctrl+Esc
+    Wh_Log(L"Windows Key Actions: Unregistered hotkeys via APC");
+}
+
+// Disable Windows shell hotkeys (Win key and Ctrl+Esc)
+void DisableShellHotkeys() {
+    if (g_hotkeysDisabled.load() || g_windowsKeyAction != "custom") {
+        return;
+    }
+    
+    // Find the window that registered the Start menu hotkeys
+    // On Windows 10/11, this is typically the ApplicationManager window
+    HWND startMenuWnd = FindWindowW(L"Windows.UI.Core.CoreWindow", L"Start");
+    if (!startMenuWnd) {
+        // Try alternate window class for Windows 11
+        startMenuWnd = FindWindowW(L"ApplicationFrameWindow", nullptr);
+    }
+    if (!startMenuWnd) {
+        // Fallback to Immersive Shell window
+        startMenuWnd = FindWindowW(L"ApplicationManager_ImmersiveShellWindow", nullptr);
+    }
+    
+    if (startMenuWnd) {
+        // Get the thread that owns the Start menu window
+        DWORD threadId = GetWindowThreadProcessId(startMenuWnd, nullptr);
+        if (threadId) {
+            HANDLE thread = OpenThread(THREAD_SET_CONTEXT, FALSE, threadId);
+            if (thread) {
+                // Queue an APC to unregister hotkeys in the correct thread context
+                QueueUserAPC(UnregisterHotkeysAPC, thread, 0);
+                CloseHandle(thread);
+                g_hotkeysDisabled = true;
+                Wh_Log(L"Windows Key Actions: Queued APC to disable shell hotkeys");
+            } else {
+                Wh_Log(L"Windows Key Actions: Failed to open thread, error=%lu", GetLastError());
+            }
+        }
+    } else {
+        Wh_Log(L"Windows Key Actions: Could not find Start menu window");
+    }
+}
+
+// Restore Windows shell hotkeys (called on cleanup)
+void RestoreShellHotkeys() {
+    if (!g_hotkeysDisabled.load()) {
+        return;
+    }
+    
+    // Note: We don't need to re-register the hotkeys on cleanup
+    // Windows will re-register them automatically when needed
+    
+    g_hotkeysDisabled = false;
+    Wh_Log(L"Windows Key Actions: Hotkeys will be restored by Windows");
+}
 
 // Settings loading
 void LoadSettings() {
@@ -430,7 +511,8 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
                     Wh_Log(L"Windows Key Actions: Win key down (vk=%u, flags=0x%08X) - blocking in custom mode", kbd->vkCode, kbd->flags);
                     
                     // Block Win key down in custom mode to prevent Start menu
-                    // Blocking both DOWN and UP is sufficient - no need for Ctrl injection
+                    // Since we've also hooked RegisterHotKey and unregistered existing hotkeys,
+                    // blocking the key should be sufficient
                     if (g_windowsKeyAction == "custom") {
                         return 1;
                     }
@@ -597,6 +679,12 @@ BOOL Wh_ModInit() {
         return FALSE;
     }
     
+    // Hook RegisterHotKey to prevent shell from re-registering Win key hotkeys
+    Wh_SetFunctionHook((void*)RegisterHotKey, (void*)RegisterHotKeyHook, (void**)&g_pOriginalRegisterHotKey);
+    
+    // Disable Windows shell hotkeys if in custom mode
+    DisableShellHotkeys();
+    
     Wh_Log(L"Windows Key Actions: initialized successfully");
     // No grace period; hook active immediately
     return TRUE;
@@ -642,13 +730,27 @@ void Wh_ModUninit() {
         UnhookWindowsHookEx(g_keyboardHook);
         g_keyboardHook = nullptr;
     }
+    
+    // Restore Windows shell hotkeys
+    RestoreShellHotkeys();
+    
     Wh_Log(L"Windows Key Actions: uninitialized");
 }
 
 // Settings changed callback
 void Wh_ModSettingsChanged() {
+    std::string oldAction = g_windowsKeyAction;
     LoadSettings();
     UpdateStartButtonInfo();
+    
+    // Enable/disable hotkeys based on mode change
+    if (oldAction != g_windowsKeyAction) {
+        if (g_windowsKeyAction == "custom") {
+            DisableShellHotkeys();
+        } else {
+            RestoreShellHotkeys();
+        }
+    }
 }
 
 // Helpers
