@@ -166,7 +166,7 @@ RECT g_startButtonRect = {0};
 
 // Settings
 std::string g_windowsKeyAction = "default";
-std::string g_windowsKeyCommand = "cmd.exe";
+std::string g_windowsKeyCommand = "control.exe";
 std::string g_startButtonLeftClickAction = "default";
 std::string g_startButtonLeftClickCommand = "explorer.exe %USERPROFILE%";
 std::string g_startButtonRightClickAction = "default";
@@ -325,8 +325,7 @@ void ExecuteCustomAction() {
         keybd_event(VK_LWIN, 0, KEYEVENTF_KEYUP, 0);
     }
     else if (g_windowsKeyAction == "custom") {
-        // Ensure Start menu isn't visible before running the action
-        CloseStartMenuIfOpen();
+        // Execute custom command directly - Start menu should already be suppressed by the hook
         Wh_Log(L"Windows Key Actions: executing Windows key command: %S", g_windowsKeyCommand.c_str());
         ExecuteCommand(g_windowsKeyCommand);
     }
@@ -428,16 +427,10 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
                     g_otherKeyPressed = false;
                     g_actionExecuted = false;
                     g_windowsKeyPressTime = GetTickCount();
-                    Wh_Log(L"Windows Key Actions: Win key down (vk=%u, flags=0x%08X) - blocking", kbd->vkCode, kbd->flags);
-
-                    // Proactively cancel Start by injecting a harmless key (Ctrl tap)
-                    // so Windows treats it as a combo and won't open Start on Win up.
-                    if (g_windowsKeyAction == "custom") {
-                        SendVirtualKey(VK_CONTROL, true);
-                        SendVirtualKey(VK_CONTROL, false);
-                    }
+                    Wh_Log(L"Windows Key Actions: Win key down (vk=%u, flags=0x%08X) - blocking in custom mode", kbd->vkCode, kbd->flags);
                     
-                    // Block Win key down in custom mode to prevent Start
+                    // Block Win key down in custom mode to prevent Start menu
+                    // Blocking both DOWN and UP is sufficient - no need for Ctrl injection
                     if (g_windowsKeyAction == "custom") {
                         return 1;
                     }
