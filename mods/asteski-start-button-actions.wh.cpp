@@ -60,6 +60,10 @@ The mod installs low-level keyboard and mouse hooks that monitor Start button cl
 - Works on Windows 10 and Windows 11
 - Does not interfere with existing Windows functionality
 - Can be safely disabled/enabled without system restart
+
+## Issues
+- Custom action bound to the Windows key doesn’t activate on the first attempt when an elevated window is in focus
+
 */
 // ==/WindhawkModReadme==
 
