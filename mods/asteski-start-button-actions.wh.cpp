@@ -2,11 +2,11 @@
 // @id           start-button-actions
 // @name         Start Button Actions
 // @description  Assign custom actions to Start button clicks and Windows key press
-// @version      1.0.0-prerelease
+// @version      1.1.0
 // @author       Asteski
 // @github       https://github.com/Asteski
 // @include      explorer.exe
-// @compilerOptions -lgdi32 -luser32 -lshell32 -ladvapi32 -lole32
+// @compilerOptions -lgdi32 -luser32 -lshell32 -ladvapi32 -lole32 -loleaut32 -luuid
 // @architecture x86-64
 // ==/WindhawkMod==
 
@@ -37,6 +37,9 @@ Each type of click on the Start button can be configured independently:
 - **Default**: Opens the default Windows start menu
 - **Custom Command**: Executes a custom command specified below
 - **Disabled**: Windows key behaves normally (no custom action)
+
+### Elevation for Custom Commands
+- **Run Custom Actions As**: Choose whether custom commands run as standard user (unelevated) or as administrator. When Windhawk runs elevated, selecting "Standard user" ensures your commands run without admin rights.
 
 ### Command Examples
 - `notepad.exe` - Opens Notepad
@@ -130,10 +133,23 @@ The mod installs low-level keyboard and mouse hooks that monitor Start button cl
   - 100: 100ms (Fast)
   - 150: 150ms (Default)
   - 200: 200ms (Conservative)
+- runCustomActionsAs: user
+  $name: Run Custom Actions As
+  $description: Elevation to use when launching custom commands
+  $options:
+   - user: Standard user (unelevated)
+   - admin: Administrator (elevated)
 */
 // ==/WindhawkModSettings==
 
 #include <windows.h>
+#include <shlobj.h>
+#include <shobjidl.h>
+#include <shlguid.h>
+#include <exdisp.h>
+#include <shldisp.h>
+#include <ole2.h>
+#include <oleauto.h>
 #include <string>
 #include <atomic>
 #ifndef Wh_Log
@@ -169,6 +185,7 @@ std::atomic<bool> g_hotkeysDisabled{false}; // Track if we've disabled shell hot
 // Settings
 std::string g_windowsKeyAction = "default";
 std::string g_windowsKeyCommand = "control.exe";
+std::string g_runCustomActionsAs = "user"; // user | admin
 std::string g_startButtonLeftClickAction = "default";
 std::string g_startButtonLeftClickCommand = "explorer.exe %USERPROFILE%";
 std::string g_startButtonRightClickAction = "default";
@@ -220,6 +237,8 @@ void ClickStartButton();
 void UpdateStartButtonInfo();
 void DisableShellHotkeys();
 void RestoreShellHotkeys();
+bool ShellExecuteUnelevated(const wchar_t* file, const wchar_t* params, int nShow = SW_SHOWNORMAL);
+bool CreateProcessWithExplorerToken(const wchar_t* app, wchar_t* cmdMutable, int nShow = SW_SHOWNORMAL);
 
 // APC callback to unregister hotkeys from the correct thread context
 void NTAPI UnregisterHotkeysAPC(ULONG_PTR Parameter) {
@@ -284,6 +303,7 @@ void LoadSettings() {
     // Load from Windhawk settings
     PCWSTR windowsKeyAction = Wh_GetStringSetting(L"windowsKeyAction");
     PCWSTR windowsKeyCommand = Wh_GetStringSetting(L"windowsKeyCommand");
+    PCWSTR runCustomActionsAs = Wh_GetStringSetting(L"runCustomActionsAs");
     PCWSTR startButtonLeftClickAction = Wh_GetStringSetting(L"startButtonLeftClickAction");
     PCWSTR startButtonLeftClickCommand = Wh_GetStringSetting(L"startButtonLeftClickCommand");
     PCWSTR startButtonRightClickAction = Wh_GetStringSetting(L"startButtonRightClickAction");
@@ -309,6 +329,13 @@ void LoadSettings() {
         Wh_FreeStringSetting(windowsKeyCommand);
     } else {
         g_windowsKeyCommand = "control.exe";
+    }
+    
+    if (runCustomActionsAs) {
+        g_runCustomActionsAs = WideToUtf8(runCustomActionsAs);
+        Wh_FreeStringSetting(runCustomActionsAs);
+    } else {
+        g_runCustomActionsAs = "user";
     }
     
     if (startButtonLeftClickAction) {
@@ -433,38 +460,71 @@ void ExecuteCommand(const std::string& command) {
         wcscpy_s(expandedCommand, wcommand.c_str());
     }
     
-    // Parse command into executable and parameters
+    // Parse command into executable and parameters (robustly handles quotes)
     std::wstring expandedStr(expandedCommand);
     std::wstring executable;
     std::wstring parameters;
-    
-    // Find first space to split executable from parameters
-    size_t spacePos = expandedStr.find(L' ');
-    if (spacePos != std::wstring::npos) {
-        executable = expandedStr.substr(0, spacePos);
-        parameters = expandedStr.substr(spacePos + 1);
+
+    if (!expandedStr.empty() && expandedStr[0] == L'"') {
+        // Quoted executable path
+        size_t endQuote = expandedStr.find(L'"', 1);
+        if (endQuote != std::wstring::npos) {
+            executable = expandedStr.substr(1, endQuote - 1);
+            if (endQuote + 1 < expandedStr.size()) {
+                if (expandedStr[endQuote + 1] == L' ') {
+                    parameters = expandedStr.substr(endQuote + 2);
+                } else {
+                    parameters = expandedStr.substr(endQuote + 1);
+                }
+            }
+        } else {
+            // Malformed quotes; fallback to whole string
+            executable = expandedStr;
+        }
     } else {
-        executable = expandedStr;
+        size_t spacePos = expandedStr.find(L' ');
+        if (spacePos != std::wstring::npos) {
+            executable = expandedStr.substr(0, spacePos);
+            parameters = expandedStr.substr(spacePos + 1);
+        } else {
+            executable = expandedStr;
+        }
     }
-    
-    // Execute the command with proper parameter separation
-    HINSTANCE hResult = ShellExecuteW(nullptr, L"open", executable.c_str(), 
-                                      parameters.empty() ? nullptr : parameters.c_str(), 
+
+    // Decide elevation behavior
+    bool wantUnelevated = (g_runCustomActionsAs == "user");
+
+    if (wantUnelevated) {
+        // Try launching unelevated via Explorer's COM automation first
+        if (ShellExecuteUnelevated(executable.c_str(), parameters.empty() ? nullptr : parameters.c_str(), SW_SHOWNORMAL)) {
+            return;
+        }
+        // Fallback: try token duplication from explorer
+        std::wstring cmdLine = L"\"" + executable + L"\"";
+        if (!parameters.empty()) {
+            cmdLine.push_back(L' ');
+            cmdLine += parameters;
+        }
+        wchar_t mutableCmd[MAX_PATH * 2];
+        wcsncpy_s(mutableCmd, cmdLine.c_str(), _TRUNCATE);
+        if (CreateProcessWithExplorerToken(executable.c_str(), mutableCmd, SW_SHOWNORMAL)) {
+            return;
+        }
+        // As a last resort, fall back to elevated launch to avoid total failure
+    }
+
+    // Elevated or fallback path: use ShellExecute, then CreateProcess if needed
+    HINSTANCE hResult = ShellExecuteW(nullptr, L"open", executable.c_str(),
+                                      parameters.empty() ? nullptr : parameters.c_str(),
                                       nullptr, SW_SHOWNORMAL);
-    
-    // If ShellExecute fails, try CreateProcess as fallback
+
     if ((INT_PTR)hResult <= 32) {
-        STARTUPINFOW si = {0};
-        PROCESS_INFORMATION pi = {0};
+        STARTUPINFOW si{};
+        PROCESS_INFORMATION pi{};
         si.cb = sizeof(si);
-        
-        // Create a copy of the full command for CreateProcess (it modifies the string)
         wchar_t cmdCopy[MAX_PATH * 2];
         wcscpy_s(cmdCopy, expandedCommand);
-        
-        CreateProcessW(nullptr, cmdCopy, nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi);
-        
-        if (pi.hProcess) {
+        if (CreateProcessW(nullptr, cmdCopy, nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi)) {
             CloseHandle(pi.hProcess);
             CloseHandle(pi.hThread);
         }
@@ -945,6 +1005,153 @@ void UpdateStartButtonInfo() {
     } else {
         g_startButtonHwnd = nullptr;
     }
+}
+
+// Try to run unelevated via the shell's COM automation (Explorer), per Raymond Chen's guidance
+bool ShellExecuteUnelevated(const wchar_t* file, const wchar_t* params, int nShow) {
+    HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    bool coInit = SUCCEEDED(hr);
+    // If already initialized (S_FALSE), we still need to call CoUninitialize at the end
+    if (hr == RPC_E_CHANGED_MODE) {
+        // Fallback: try MTA
+        hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+        coInit = SUCCEEDED(hr);
+    }
+
+    IShellWindows* psw = nullptr;
+    hr = CoCreateInstance(CLSID_ShellWindows, nullptr, CLSCTX_LOCAL_SERVER,
+                           IID_PPV_ARGS(&psw));
+    if (FAILED(hr) || !psw) {
+        if (coInit) CoUninitialize();
+        return false;
+    }
+
+    VARIANT vtLoc{}; vtLoc.vt = VT_I4; vtLoc.lVal = CSIDL_DESKTOP;
+    VARIANT vtEmpty{}; vtEmpty.vt = VT_EMPTY;
+    long lhwnd = 0;
+    IDispatch* pdisp = nullptr;
+    hr = psw->FindWindowSW(&vtLoc, &vtEmpty, SWC_DESKTOP, &lhwnd, SWFO_NEEDDISPATCH, &pdisp);
+    if (FAILED(hr) || !pdisp) {
+        psw->Release();
+        if (coInit) CoUninitialize();
+        return false;
+    }
+
+    IServiceProvider* psp = nullptr;
+    hr = pdisp->QueryInterface(IID_PPV_ARGS(&psp));
+    if (FAILED(hr) || !psp) {
+        pdisp->Release();
+        psw->Release();
+        if (coInit) CoUninitialize();
+        return false;
+    }
+
+    IShellBrowser* psb = nullptr;
+    hr = psp->QueryService(SID_STopLevelBrowser, IID_PPV_ARGS(&psb));
+    if (FAILED(hr) || !psb) {
+        psp->Release();
+        pdisp->Release();
+        psw->Release();
+        if (coInit) CoUninitialize();
+        return false;
+    }
+
+    IShellView* psv = nullptr;
+    hr = psb->QueryActiveShellView(&psv);
+    if (FAILED(hr) || !psv) {
+        psb->Release();
+        psp->Release();
+        pdisp->Release();
+        psw->Release();
+        if (coInit) CoUninitialize();
+        return false;
+    }
+
+    IDispatch* pdispView = nullptr;
+    hr = psv->GetItemObject(SVGIO_BACKGROUND, IID_PPV_ARGS(&pdispView));
+    if (FAILED(hr) || !pdispView) {
+        psv->Release();
+        psb->Release();
+        psp->Release();
+        pdisp->Release();
+        psw->Release();
+        if (coInit) CoUninitialize();
+        return false;
+    }
+
+    IShellDispatch2* psd = nullptr;
+    hr = pdispView->QueryInterface(IID_PPV_ARGS(&psd));
+    if (FAILED(hr) || !psd) {
+        pdispView->Release();
+        psv->Release();
+        psb->Release();
+        psp->Release();
+        pdisp->Release();
+        psw->Release();
+        if (coInit) CoUninitialize();
+        return false;
+    }
+
+    VARIANT vFile{}; vFile.vt = VT_BSTR; vFile.bstrVal = SysAllocString(file);
+    VARIANT vArgs{}; if (params) { vArgs.vt = VT_BSTR; vArgs.bstrVal = SysAllocString(params); } else { vArgs.vt = VT_EMPTY; }
+    VARIANT vDir{}; vDir.vt = VT_EMPTY;
+    VARIANT vOp{}; vOp.vt = VT_BSTR; vOp.bstrVal = SysAllocString(L"open");
+    VARIANT vShow{}; vShow.vt = VT_I4; vShow.lVal = nShow;
+
+    hr = psd->ShellExecute(vFile.bstrVal, vArgs, vDir, vOp, vShow);
+
+    if (vFile.vt == VT_BSTR) SysFreeString(vFile.bstrVal);
+    if (vArgs.vt == VT_BSTR) SysFreeString(vArgs.bstrVal);
+    if (vOp.vt == VT_BSTR) SysFreeString(vOp.bstrVal);
+
+    psd->Release();
+    pdispView->Release();
+    psv->Release();
+    psb->Release();
+    psp->Release();
+    pdisp->Release();
+    psw->Release();
+
+    if (coInit) CoUninitialize();
+    return SUCCEEDED(hr);
+}
+
+// Fallback: duplicate Explorer's token and start the process unelevated
+bool CreateProcessWithExplorerToken(const wchar_t* app, wchar_t* cmdMutable, int /*nShow*/) {
+    HWND hShell = GetShellWindow();
+    if (!hShell) {
+        hShell = FindWindowW(L"Shell_TrayWnd", nullptr);
+        if (!hShell) return false;
+    }
+    DWORD pid = 0;
+    GetWindowThreadProcessId(hShell, &pid);
+    if (!pid) return false;
+    HANDLE hProc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!hProc) return false;
+    HANDLE hTok = nullptr;
+    if (!OpenProcessToken(hProc, TOKEN_DUPLICATE | TOKEN_ASSIGN_PRIMARY | TOKEN_QUERY | TOKEN_ADJUST_DEFAULT | TOKEN_ADJUST_SESSIONID, &hTok)) {
+        CloseHandle(hProc);
+        return false;
+    }
+    HANDLE hPrimary = nullptr;
+    SECURITY_ATTRIBUTES sa{}; sa.nLength = sizeof(sa);
+    if (!DuplicateTokenEx(hTok, TOKEN_ALL_ACCESS, &sa, SecurityImpersonation, TokenPrimary, &hPrimary)) {
+        CloseHandle(hTok);
+        CloseHandle(hProc);
+        return false;
+    }
+
+    STARTUPINFOW si{}; si.cb = sizeof(si);
+    PROCESS_INFORMATION pi{};
+    BOOL ok = CreateProcessWithTokenW(hPrimary, LOGON_WITH_PROFILE, app, cmdMutable, 0, nullptr, nullptr, &si, &pi);
+    if (ok) {
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+    }
+    CloseHandle(hPrimary);
+    CloseHandle(hTok);
+    CloseHandle(hProc);
+    return ok == TRUE;
 }
 
 // Execute action for Start button click
