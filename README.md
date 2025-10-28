@@ -8,4 +8,3 @@ Future plans:
 
 - macOS-like window switcher 
 - font rendering enhancer
-- keyboard shortcuts manager
