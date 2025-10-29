@@ -7,4 +7,4 @@ My collection of Windhawk mods:
 Future plans:
 
 - macOS-like window switcher
-- remove space between flyouts and taskbar
+- toggle hidden files in explorer and desktop with keyboard shortcut
