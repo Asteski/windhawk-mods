@@ -2,7 +2,7 @@
 // @id           start-button-actions
 // @name         Start Button Actions
 // @description  Assign custom actions to Start button clicks and Windows key press
-// @version      1.1.0
+// @version      1.0.0
 // @author       Asteski
 // @github       https://github.com/Asteski
 // @include      explorer.exe
