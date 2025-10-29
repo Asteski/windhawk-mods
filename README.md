@@ -6,5 +6,4 @@ My collection of Windhawk mods:
 
 Future plans:
 
-- macOS-like window switcher 
-- font rendering enhancer
+- macOS-like window switcher
