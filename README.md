@@ -7,3 +7,4 @@ My collection of Windhawk mods:
 Future plans:
 
 - macOS-like window switcher
+- remove space between flyouts and taskbar
