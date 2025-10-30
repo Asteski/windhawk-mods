@@ -7,7 +7,6 @@
 // @github       https://github.com/Asteski
 // @include      explorer.exe
 // @compilerOptions -lgdi32 -luser32 -lshell32 -ladvapi32 -lole32 -loleaut32 -luuid
-// @architecture x86-64
 // ==/WindhawkMod==
 
 // ==WindhawkModReadme==
