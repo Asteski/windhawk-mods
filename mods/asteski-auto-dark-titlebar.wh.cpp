@@ -226,31 +226,39 @@ LRESULT WINAPI DefWindowProc_hook(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lPa
     return DefWindowProc_orig(hWnd, Msg, wParam, lParam);
 }
 
-// Hook NtUserCreateWindowEx to catch new windows
-using NtUserCreateWindowEx_t = HWND(WINAPI*)(
-    DWORD dwExStyle, PVOID pClassName, LPCWSTR pWindowName, PVOID pWindowNameU,
-    DWORD dwStyle, LONG x, LONG y, LONG nWidth, LONG nHeight,
-    HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam,
-    DWORD dwShowMode, DWORD dwUnknown1, DWORD dwUnknown2, VOID* qwUnknown3);
+// Hook CreateWindowExW/A (documented APIs) instead of internal NtUserCreateWindowEx
+// Using the public user32 APIs avoids instability and potential crashes (e.g. explorer restarts)
+// that can happen when hooking low-level win32u internal functions.
 
-NtUserCreateWindowEx_t NtUserCreateWindowEx_orig;
+using CreateWindowExW_t = decltype(&CreateWindowExW);
+static CreateWindowExW_t CreateWindowExW_orig;
 
-HWND WINAPI NtUserCreateWindowEx_hook(
-    DWORD dwExStyle, PVOID pClassName, LPCWSTR pWindowName, PVOID pWindowNameU,
-    DWORD dwStyle, LONG x, LONG y, LONG nWidth, LONG nHeight,
-    HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam,
-    DWORD dwShowMode, DWORD dwUnknown1, DWORD dwUnknown2, VOID* qwUnknown3) {
-    
-    HWND hWnd = NtUserCreateWindowEx_orig(
-        dwExStyle, pClassName, pWindowName, pWindowNameU, dwStyle,
-        x, y, nWidth, nHeight, hWndParent, hMenu, hInstance, lpParam,
-        dwShowMode, dwUnknown1, dwUnknown2, qwUnknown3);
-    
+HWND WINAPI CreateWindowExW_hook(
+    DWORD dwExStyle, LPCWSTR lpClassName, LPCWSTR lpWindowName,
+    DWORD dwStyle, int X, int Y, int nWidth, int nHeight,
+    HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam) {
+    HWND hWnd = CreateWindowExW_orig(
+        dwExStyle, lpClassName, lpWindowName, dwStyle,
+        X, Y, nWidth, nHeight, hWndParent, hMenu, hInstance, lpParam);
     if (hWnd) {
-        // Apply dark mode to newly created window
         NewWindowShown(hWnd);
     }
-    
+    return hWnd;
+}
+
+using CreateWindowExA_t = decltype(&CreateWindowExA);
+static CreateWindowExA_t CreateWindowExA_orig;
+
+HWND WINAPI CreateWindowExA_hook(
+    DWORD dwExStyle, LPCSTR lpClassName, LPCSTR lpWindowName,
+    DWORD dwStyle, int X, int Y, int nWidth, int nHeight,
+    HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam) {
+    HWND hWnd = CreateWindowExA_orig(
+        dwExStyle, lpClassName, lpWindowName, dwStyle,
+        X, Y, nWidth, nHeight, hWndParent, hMenu, hInstance, lpParam);
+    if (hWnd) {
+        NewWindowShown(hWnd);
+    }
     return hWnd;
 }
 
@@ -279,24 +287,18 @@ BOOL Wh_ModInit() {
         Wh_Log(L"[Process %d] Successfully hooked DefWindowProcW", GetCurrentProcessId());
     }
     
-    // Hook NtUserCreateWindowEx to catch new windows
-    HMODULE hWin32u = GetModuleHandleW(L"win32u.dll");
-    if (!hWin32u) {
-        Wh_Log(L"[Process %d] WARNING: Failed to get win32u.dll", GetCurrentProcessId());
-        return TRUE; // Don't fail completely
-    }
-    
-    void* pNtUserCreateWindowEx = (void*)GetProcAddress(hWin32u, "NtUserCreateWindowEx");
-    if (!pNtUserCreateWindowEx) {
-        Wh_Log(L"[Process %d] WARNING: Failed to get NtUserCreateWindowEx", GetCurrentProcessId());
-        return TRUE; // Don't fail completely
-    }
-    
-    if (!Wh_SetFunctionHook(pNtUserCreateWindowEx, (void*)NtUserCreateWindowEx_hook,
-        (void**)&NtUserCreateWindowEx_orig)) {
-        Wh_Log(L"[Process %d] ERROR: Failed to hook NtUserCreateWindowEx", GetCurrentProcessId());
+    // Hook CreateWindowExW and CreateWindowExA instead of internal NtUserCreateWindowEx
+    if (!Wh_SetFunctionHook((void*)CreateWindowExW, (void*)CreateWindowExW_hook,
+        (void**)&CreateWindowExW_orig)) {
+        Wh_Log(L"[Process %d] ERROR: Failed to hook CreateWindowExW", GetCurrentProcessId());
     } else {
-        Wh_Log(L"[Process %d] Successfully hooked NtUserCreateWindowEx", GetCurrentProcessId());
+        Wh_Log(L"[Process %d] Successfully hooked CreateWindowExW", GetCurrentProcessId());
+    }
+    if (!Wh_SetFunctionHook((void*)CreateWindowExA, (void*)CreateWindowExA_hook,
+        (void**)&CreateWindowExA_orig)) {
+        Wh_Log(L"[Process %d] WARNING: Failed to hook CreateWindowExA (ANSI)", GetCurrentProcessId());
+    } else {
+        Wh_Log(L"[Process %d] Successfully hooked CreateWindowExA", GetCurrentProcessId());
     }
     
     Wh_Log(L"[Process %d] Initialization complete", GetCurrentProcessId());
