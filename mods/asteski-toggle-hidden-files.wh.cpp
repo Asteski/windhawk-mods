@@ -324,7 +324,7 @@ void WINAPI EntryPoint_Hook() {
     ExitThread(0);
 }
 
-BOOL WhTool_ModInit() {
+BOOL Wh_ModInit() {
     bool isService = false;
     bool isToolModProcess = false;
     bool isCurrentToolModProcess = false;
@@ -412,8 +412,8 @@ void Wh_ModAfterInit() {
     WCHAR
     commandLine[MAX_PATH + 2 +
                 (sizeof(L" -tool-mod \"" WH_MOD_ID "\"") / sizeof(WCHAR)) - 1];
-    swprintf_s(commandLine, L"\"%s\" -tool-mod \"%s\"", currentProcessPath,
-               WH_MOD_ID);
+    swprintf(commandLine, ARRAYSIZE(commandLine), L"\"%s\" -tool-mod \"%s\"",
+             currentProcessPath, WH_MOD_ID);
 
     HMODULE kernelModule = GetModuleHandle(L"kernelbase.dll");
     if (!kernelModule) {
@@ -456,7 +456,7 @@ void Wh_ModAfterInit() {
     CloseHandle(pi.hThread);
 }
 
-void WhTool_ModSettingsChanged() {
+void Wh_ModSettingsChanged() {
     if (g_isToolModProcessLauncher) {
         return;
     }
@@ -464,7 +464,7 @@ void WhTool_ModSettingsChanged() {
     WhTool_ModSettingsChanged();
 }
 
-void WhTool_ModUninit() {
+void Wh_ModUninit() {
     if (g_isToolModProcessLauncher) {
         return;
     }
