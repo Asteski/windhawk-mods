@@ -6,7 +6,6 @@
 // @author       Asteski
 // @github       https://github.com/Asteski
 // @include      windhawk.exe
-// @compilerOptions -std=c++20
 // ==/WindhawkMod==
 
 // ==WindhawkModSettings==
