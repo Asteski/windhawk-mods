@@ -1076,9 +1076,11 @@ static HICON LoadWindowIcon(HWND hWnd) {
     if (g_IsShellFrameWindow && g_IsShellFrameWindow(hWnd)) {
         hIcon = TryGetUwpIconFromExplorer(hWnd, GetHeaderIconSizePx());
     }
-    // For the larger sizes, a crisp full-resolution exe icon beats the
-    // upscaled WM_GETICON result.
-    if (!hIcon && GetHeaderIconSizeBase() > 32) {
+    // A crisp exe icon extracted at the exact target size beats the WM_GETICON
+    // result, which is a fixed ~32px frame: blurry when upscaled to 48/64 and
+    // pixelated when downscaled to 16 (GDI does no smoothing in DrawIconEx).
+    // PrivateExtractIconsW picks the best-matching frame at the requested size.
+    if (!hIcon) {
         hIcon = TryGetCrispExeIcon(hWnd, GetHeaderIconSizePx());
     }
     if (!hIcon) SendMessageTimeoutW(hWnd, WM_GETICON, ICON_BIG, 0, SMTO_ABORTIFHUNG | SMTO_BLOCK, 100, (DWORD_PTR*)&hIcon);
