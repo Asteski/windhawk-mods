@@ -267,14 +267,31 @@ bool InvokeNavPaneToggleForWindow(HWND hwndTarget) {
 // Worker thread: owns an STA apartment and a message loop so the toggle runs
 // off the low-level keyboard hook callback.
 DWORD WINAPI WorkerThreadProc(LPVOID lpParam) {
-    // Force the message queue to exist, then signal that posting is safe.
+    // Force the message queue to exist before the hook is installed.
     MSG msg;
     PeekMessageW(&msg, nullptr, WM_USER, WM_USER, PM_NOREMOVE);
+
+    HRESULT hrCo = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+
+    // Install the low-level keyboard hook on THIS thread, which owns the
+    // message loop below. LL hook callbacks are delivered only to an
+    // installing thread that pumps messages, so installing it here (rather
+    // than on Windhawk's init thread, which does not pump) is what makes the
+    // hotkey fire at all. Use the module that actually contains the hook
+    // procedure (this mod's DLL), not the host EXE.
+    HMODULE hSelf = nullptr;
+    GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                           GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                       (LPCWSTR)&KeyboardHookProc, &hSelf);
+    g_hKeyboardHook =
+        SetWindowsHookExW(WH_KEYBOARD_LL, KeyboardHookProc, hSelf, 0);
+    Wh_Log(L"WorkerThread: hook=%p err=%lu hSelf=%p", (void*)g_hKeyboardHook,
+           g_hKeyboardHook ? 0 : GetLastError(), (void*)hSelf);
+
+    // Signal that the hook is installed (or failed) and posting is safe.
     if (lpParam) {
         SetEvent((HANDLE)lpParam);
     }
-
-    HRESULT hrCo = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 
     while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
         if (msg.message == WM_APP_TOGGLE_NAV_PANE) {
@@ -285,6 +302,10 @@ DWORD WINAPI WorkerThreadProc(LPVOID lpParam) {
         DispatchMessageW(&msg);
     }
 
+    if (g_hKeyboardHook) {
+        UnhookWindowsHookEx(g_hKeyboardHook);
+        g_hKeyboardHook = nullptr;
+    }
     if (SUCCEEDED(hrCo)) {
         CoUninitialize();
     }
@@ -319,6 +340,7 @@ LRESULT CALLBACK KeyboardHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
         // Only process if we're in Explorer windows
         if (context == CONTEXT_EXPLORER && IsCtrlAltPPressed(wParam, lParam)) {
             HWND hForeground = GetForegroundWindow();
+            MessageBeep(MB_OK);  // temporary: confirms the hook fired
             Wh_Log(L"Hotkey detected, foreground=%p workerTid=%lu",
                    (void*)hForeground, g_workerThreadId);
             if (hForeground && g_workerThreadId) {
@@ -338,7 +360,10 @@ LRESULT CALLBACK KeyboardHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
 BOOL WhTool_ModInit() {
     RegisterNavPaneVerb();
 
-    // Start the COM worker thread and wait until its message queue is ready.
+    g_modEnabled = true;
+
+    // Start the worker thread; it owns COM, installs the keyboard hook, and
+    // runs the message loop. Wait until it reports the hook state.
     HANDLE hReady = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     g_workerThread =
         CreateThread(nullptr, 0, WorkerThreadProc, hReady, 0, &g_workerThreadId);
@@ -346,19 +371,14 @@ BOOL WhTool_ModInit() {
         if (hReady) {
             CloseHandle(hReady);
         }
+        g_modEnabled = false;
         UnregisterNavPaneVerb();
         return FALSE;
     }
     if (hReady) {
-        // The thread id from CreateThread is valid; give the queue a moment to
-        // be created before any messages are posted.
         WaitForSingleObject(hReady, 2000);
         CloseHandle(hReady);
     }
-
-    // Install keyboard hook
-    g_hKeyboardHook = SetWindowsHookExW(WH_KEYBOARD_LL, KeyboardHookProc,
-                                        GetModuleHandle(nullptr), 0);
 
     if (!g_hKeyboardHook) {
         if (g_workerThreadId) {
@@ -368,11 +388,11 @@ BOOL WhTool_ModInit() {
         CloseHandle(g_workerThread);
         g_workerThread = nullptr;
         g_workerThreadId = 0;
+        g_modEnabled = false;
         UnregisterNavPaneVerb();
         return FALSE;
     }
 
-    g_modEnabled = true;
     return TRUE;
 }
 
@@ -384,13 +404,7 @@ void WhTool_ModSettingsChanged() {
 void WhTool_ModUninit() {
     g_modEnabled = false;
 
-    // Remove keyboard hook
-    if (g_hKeyboardHook) {
-        UnhookWindowsHookEx(g_hKeyboardHook);
-        g_hKeyboardHook = nullptr;
-    }
-
-    // Stop the worker thread
+    // Stop the worker thread; it unhooks the keyboard hook on its way out.
     if (g_workerThreadId) {
         PostThreadMessageW(g_workerThreadId, WM_QUIT, 0, 0);
     }
