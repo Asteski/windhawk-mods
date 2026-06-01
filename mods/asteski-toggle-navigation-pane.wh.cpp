@@ -217,6 +217,7 @@ bool InvokeNavPaneToggleForWindow(HWND hwndTarget) {
 
     bool done = false;
     bool matched = false;
+    bool foundVerb = false;
     long count = 0;
     psw->get_Count(&count);
     Wh_Log(L"ShellWindows count=%ld", count);
@@ -265,8 +266,10 @@ bool InvokeNavPaneToggleForWindow(HWND hwndTarget) {
                                             pcm, hMenu, idCmdFirst);
                                         Wh_Log(L"FindVerbCommandId id=%u", cmdId);
                                         if (cmdId != 0) {
+                                            foundVerb = true;
                                             CMINVOKECOMMANDINFO ici = {0};
                                             ici.cbSize = sizeof(ici);
+                                            ici.hwnd = hwndTarget;
                                             ici.lpVerb = MAKEINTRESOURCEA(
                                                 cmdId - idCmdFirst);
                                             ici.nShow = SW_SHOWNORMAL;
@@ -304,6 +307,22 @@ bool InvokeNavPaneToggleForWindow(HWND hwndTarget) {
     }
 
     psw->Release();
+
+    // Temporary audible diagnostics (distinct tones for each outcome):
+    //   low      -> no matching Explorer window found
+    //   mid-low  -> window found, but our verb not in the menu
+    //   mid-high -> verb found, but InvokeCommand failed
+    //   high     -> success
+    if (!matched) {
+        Beep(262, 400);
+    } else if (!foundVerb) {
+        Beep(523, 400);
+    } else if (!done) {
+        Beep(784, 400);
+    } else {
+        Beep(1047, 200);
+    }
+
     return done;
 }
 
@@ -383,7 +402,6 @@ LRESULT CALLBACK KeyboardHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
         // Only process if we're in Explorer windows
         if (context == CONTEXT_EXPLORER && IsCtrlAltPPressed(wParam, lParam)) {
             HWND hForeground = GetForegroundWindow();
-            MessageBeep(MB_OK);  // temporary: confirms the hook fired
             Wh_Log(L"Hotkey detected, foreground=%p workerTid=%lu",
                    (void*)hForeground, g_workerThreadId);
             if (hForeground && g_workerThreadId) {
