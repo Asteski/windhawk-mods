@@ -41,6 +41,7 @@ Explorer using the Ctrl+Alt+P keyboard shortcut.
 // ==/WindhawkModReadme==
 
 #include <windows.h>
+#include <stdio.h>
 #include <shlobj.h>
 #include <shlguid.h>
 #include <shellapi.h>
