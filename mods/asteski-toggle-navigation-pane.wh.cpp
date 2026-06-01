@@ -64,7 +64,6 @@ DWORD g_workerThreadId = 0;
 // under a class's shell key lets Explorer toggle the pane live on the active
 // window (and persist the setting) the same way the right-click entry does.
 const wchar_t* NAVPANE_VERB = L"WindhawkToggleNavPane";
-const char* NAVPANE_VERB_A = "WindhawkToggleNavPane";
 const wchar_t* NAVPANE_CANONICAL_NAME = L"{41dd5f6f-9f9e-4066-8836-722fe4bb950e}";
 const wchar_t* NAVPANE_PANE_ID = L"{cb316b22-25f7-42b8-8a09-540d23a43c2f}";
 const wchar_t* NAVPANE_PANE_VISIBLE_PROPERTY = L"PageSpaceControlSizer_Visible";
@@ -117,9 +116,12 @@ void RegisterNavPaneVerb() {
         setString(L"CanonicalName", NAVPANE_CANONICAL_NAME);
         setString(L"PaneID", NAVPANE_PANE_ID);
         setString(L"PaneVisibleProperty", NAVPANE_PANE_VISIBLE_PROPERTY);
-        // NOTE: intentionally NOT setting ProgrammaticAccessOnly while
-        // diagnosing — these canonical pane verbs appear to execute only when
-        // registered as a normal (visible) verb.
+        // "Extended" keeps the verb out of the normal right-click menu (it
+        // only appears on Shift+right-click), while CMF_EXTENDEDVERBS lets us
+        // still find and invoke it from our throwaway menu by command ID.
+        // ProgrammaticAccessOnly can't be used here: these canonical pane
+        // verbs only execute via a real (by-ID) menu invocation, not by name.
+        setString(L"Extended", L"");
 
         RegCloseKey(hKey);
     }
@@ -166,6 +168,37 @@ WindowContext GetCurrentWindowContext() {
     }
 
     return CONTEXT_UNKNOWN;
+}
+
+// Walk the populated context menu (and any submenus) and return the command
+// ID whose language-independent verb matches NAVPANE_VERB, or 0 if not found.
+static UINT FindVerbCommandId(IContextMenu* pcm, HMENU hMenu, UINT idCmdFirst) {
+    int count = GetMenuItemCount(hMenu);
+    for (int i = 0; i < count; i++) {
+        MENUITEMINFOW mii = {0};
+        mii.cbSize = sizeof(mii);
+        mii.fMask = MIIM_ID | MIIM_SUBMENU;
+        if (!GetMenuItemInfoW(hMenu, i, TRUE, &mii)) {
+            continue;
+        }
+        if (mii.hSubMenu) {
+            UINT sub = FindVerbCommandId(pcm, mii.hSubMenu, idCmdFirst);
+            if (sub) {
+                return sub;
+            }
+            continue;
+        }
+        if (mii.wID < idCmdFirst) {
+            continue;
+        }
+        wchar_t verb[128] = {0};
+        HRESULT hr = pcm->GetCommandString(mii.wID - idCmdFirst, GCS_VERBW,
+                                           nullptr, (CHAR*)verb, ARRAYSIZE(verb));
+        if (SUCCEEDED(hr) && lstrcmpiW(verb, NAVPANE_VERB) == 0) {
+            return mii.wID;
+        }
+    }
+    return 0;
 }
 
 // Locate the Explorer window matching hwndTarget and invoke the navigation
@@ -222,18 +255,26 @@ bool InvokeNavPaneToggleForWindow(HWND hwndTarget) {
                             if (SUCCEEDED(hr) && pcm) {
                                 HMENU hMenu = CreatePopupMenu();
                                 if (hMenu) {
+                                    const UINT idCmdFirst = 1;
                                     hr = pcm->QueryContextMenu(
-                                        hMenu, 0, 1, 0x7FFF, CMF_NORMAL);
+                                        hMenu, 0, idCmdFirst, 0x7FFF,
+                                        CMF_NORMAL | CMF_EXTENDEDVERBS);
                                     Wh_Log(L"QueryContextMenu hr=0x%08X", hr);
                                     if (SUCCEEDED(hr)) {
-                                        CMINVOKECOMMANDINFO ici = {0};
-                                        ici.cbSize = sizeof(ici);
-                                        ici.lpVerb = NAVPANE_VERB_A;
-                                        ici.nShow = SW_SHOWNORMAL;
-                                        hr = pcm->InvokeCommand(&ici);
-                                        Wh_Log(L"InvokeCommand hr=0x%08X", hr);
-                                        if (SUCCEEDED(hr)) {
-                                            done = true;
+                                        UINT cmdId = FindVerbCommandId(
+                                            pcm, hMenu, idCmdFirst);
+                                        Wh_Log(L"FindVerbCommandId id=%u", cmdId);
+                                        if (cmdId != 0) {
+                                            CMINVOKECOMMANDINFO ici = {0};
+                                            ici.cbSize = sizeof(ici);
+                                            ici.lpVerb = MAKEINTRESOURCEA(
+                                                cmdId - idCmdFirst);
+                                            ici.nShow = SW_SHOWNORMAL;
+                                            hr = pcm->InvokeCommand(&ici);
+                                            Wh_Log(L"InvokeCommand hr=0x%08X", hr);
+                                            if (SUCCEEDED(hr)) {
+                                                done = true;
+                                            }
                                         }
                                     }
                                     DestroyMenu(hMenu);
