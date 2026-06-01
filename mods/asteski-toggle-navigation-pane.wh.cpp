@@ -6,6 +6,7 @@
 // @author       Asteski
 // @github       https://github.com/Asteski
 // @include      windhawk.exe
+// @compilerOptions -lole32 -loleaut32 -luuid
 // ==/WindhawkMod==
 
 // ==WindhawkModReadme==
