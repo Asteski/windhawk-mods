@@ -117,7 +117,9 @@ void RegisterNavPaneVerb() {
         setString(L"CanonicalName", NAVPANE_CANONICAL_NAME);
         setString(L"PaneID", NAVPANE_PANE_ID);
         setString(L"PaneVisibleProperty", NAVPANE_PANE_VISIBLE_PROPERTY);
-        setString(L"ProgrammaticAccessOnly", L"");
+        // NOTE: intentionally NOT setting ProgrammaticAccessOnly while
+        // diagnosing — these canonical pane verbs appear to execute only when
+        // registered as a normal (visible) verb.
 
         RegCloseKey(hKey);
     }
