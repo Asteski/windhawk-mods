@@ -470,15 +470,18 @@ Additional improvements made by [Asteski](https://github.com/Asteski).
       $description: "Executable name patterns to exclude, separated by ';' (wildcards supported: * matches any characters, ? matches one). Example: notepad.exe;chrome.exe"
   $name: Excluded Windows
   $description: Exclude specific windows from appearing in the switcher.
-- customIcons:
+- customHeader:
   - - process: ""
       $name: Process Name
       $description: "Executable name to match (wildcards supported: * matches any characters, ? matches one). Example: chrome.exe or *code.exe"
     - iconPath: ""
       $name: Icon Path
-      $description: "Full path to an icon source (.ico, .exe or .dll); the first icon in the file is used. Example: C:\\Icons\\myapp.ico"
-  $name: Custom Icons
-  $description: Assign custom icons to tasks based on their executable name. The first matching rule wins.
+      $description: "Full path to an icon source (.ico, .exe or .dll); the first icon in the file is used. Leave empty to keep the default icon. Example: C:\\Icons\\myapp.ico"
+    - appName: ""
+      $name: Application Name
+      $description: "Custom name to display for matching tasks, replacing the detected application name. Leave empty to keep the default. Shown in the 'App name' and 'App name + Window title' title modes."
+  $name: Custom Header
+  $description: Assign a custom icon and/or application name to tasks based on their executable name. The first matching rule wins.
 
 */
 // ==/WindhawkModSettings==
@@ -1021,13 +1024,14 @@ static HICON TryGetCrispExeIcon(HWND hWnd, int desiredSizePx) {
     return NULL;
 }
 
-// === Custom per-process icons ===
+// === Custom per-process header (icon and/or application name) ===
 
-struct CustomIconRule {
+struct CustomHeaderRule {
     std::wstring pattern;   // executable name pattern; wildcards * and ? supported
-    std::wstring iconPath;  // .ico / .exe / .dll to extract the icon from
+    std::wstring iconPath;  // .ico / .exe / .dll to extract the icon from (optional)
+    std::wstring appName;   // custom display name overriding the detected one (optional)
 };
-static std::vector<CustomIconRule> g_customIcons;
+static std::vector<CustomHeaderRule> g_customHeaderRules;
 // Owned cache of icons loaded from custom paths; keyed by "<path>_<sizePx>".
 static std::map<std::wstring, HICON> g_customIconCache;
 
@@ -1048,7 +1052,7 @@ static HICON LoadCustomIconFromPath(const std::wstring& path, int sizePx) {
 // If the window's executable name matches a user-defined rule, return its
 // custom icon. The first matching rule wins; this overrides all other sources.
 static HICON TryGetCustomIcon(HWND hWnd, int sizePx) {
-    if (g_customIcons.empty()) return NULL;
+    if (g_customHeaderRules.empty()) return NULL;
     DWORD pid = 0;
     GetWindowThreadProcessId(hWnd, &pid);
     if (!pid) return NULL;
@@ -1060,13 +1064,38 @@ static HICON TryGetCustomIcon(HWND hWnd, int sizePx) {
     CloseHandle(hProc);
     if (!ok || !exePath[0]) return NULL;
     WCHAR* fileName = PathFindFileNameW(exePath);
-    for (const auto& rule : g_customIcons) {
+    for (const auto& rule : g_customHeaderRules) {
         if (PathMatchSpecW(fileName, rule.pattern.c_str())) {
             HICON h = LoadCustomIconFromPath(rule.iconPath, sizePx);
             if (h) return h;
         }
     }
     return NULL;
+}
+
+// If the window's executable name matches a user-defined rule with a custom
+// application name, copy it into `out` and return true. The first matching rule
+// with a non-empty name wins.
+static bool TryGetCustomAppName(HWND hWnd, WCHAR* out, size_t cch) {
+    if (g_customHeaderRules.empty()) return false;
+    DWORD pid = 0;
+    GetWindowThreadProcessId(hWnd, &pid);
+    if (!pid) return false;
+    HANDLE hProc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!hProc) return false;
+    WCHAR exePath[MAX_PATH] = {0};
+    DWORD size = MAX_PATH;
+    BOOL ok = QueryFullProcessImageNameW(hProc, 0, exePath, &size);
+    CloseHandle(hProc);
+    if (!ok || !exePath[0]) return false;
+    WCHAR* fileName = PathFindFileNameW(exePath);
+    for (const auto& rule : g_customHeaderRules) {
+        if (!rule.appName.empty() && PathMatchSpecW(fileName, rule.pattern.c_str())) {
+            wcsncpy_s(out, cch, rule.appName.c_str(), _TRUNCATE);
+            return true;
+        }
+    }
+    return false;
 }
 
 static HICON LoadWindowIcon(HWND hWnd) {
@@ -1468,6 +1497,7 @@ static void GetWindowGroupKey(HWND hWnd, WCHAR* out, size_t cch) {
 // the executable file name without extension.
 static void GetAppName(HWND hWnd, WCHAR* out, size_t cch) {
     out[0] = 0;
+    if (TryGetCustomAppName(hWnd, out, cch)) return;
     DWORD pid = 0;
     GetWindowThreadProcessId(hWnd, &pid);
     if (!pid) return;
@@ -4644,8 +4674,8 @@ static void LoadSettings() {
     }
     if (v) Wh_FreeStringSetting(v);
 
-    // Custom per-process icons (array of { process, iconPath }).
-    g_customIcons.clear();
+    // Custom per-process header (array of { process, iconPath, appName }).
+    g_customHeaderRules.clear();
     auto trimWs = [](std::wstring s) -> std::wstring {
         size_t a = s.find_first_not_of(L" \t\r\n");
         if (a == std::wstring::npos) return L"";
@@ -4653,18 +4683,23 @@ static void LoadSettings() {
         return s.substr(a, b - a + 1);
     };
     for (int i = 0; ; i++) {
-        PCWSTR proc = Wh_GetStringSetting(L"customIcons[%d].process", i);
-        PCWSTR icon = Wh_GetStringSetting(L"customIcons[%d].iconPath", i);
+        PCWSTR proc = Wh_GetStringSetting(L"customHeader[%d].process", i);
+        PCWSTR icon = Wh_GetStringSetting(L"customHeader[%d].iconPath", i);
+        PCWSTR name = Wh_GetStringSetting(L"customHeader[%d].appName", i);
         bool hasProc = proc && *proc;
         bool hasIcon = icon && *icon;
-        if (hasProc && hasIcon) {
+        bool hasName = name && *name;
+        if (hasProc && (hasIcon || hasName)) {
             std::wstring p = trimWs(proc);
-            std::wstring ip = trimWs(icon);
-            if (!p.empty() && !ip.empty()) g_customIcons.push_back({p, ip});
+            std::wstring ip = hasIcon ? trimWs(icon) : L"";
+            std::wstring an = hasName ? trimWs(name) : L"";
+            if (!p.empty() && (!ip.empty() || !an.empty()))
+                g_customHeaderRules.push_back({p, ip, an});
         }
-        bool endOfArray = !hasProc && !hasIcon;
+        bool endOfArray = !hasProc && !hasIcon && !hasName;
         if (proc) Wh_FreeStringSetting(proc);
         if (icon) Wh_FreeStringSetting(icon);
+        if (name) Wh_FreeStringSetting(name);
         if (endOfArray) break;
     }
 }
