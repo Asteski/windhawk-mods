@@ -170,15 +170,21 @@ WindowContext GetCurrentWindowContext() {
 // pane toggle verb against its active shell view's background, mirroring the
 // context-menu command exactly. Must run on a COM-initialized thread.
 bool InvokeNavPaneToggleForWindow(HWND hwndTarget) {
+    Wh_Log(L"InvokeNavPaneToggleForWindow target=%p", (void*)hwndTarget);
+
     IShellWindows* psw = nullptr;
-    if (FAILED(CoCreateInstance(CLSID_ShellWindows, nullptr, CLSCTX_ALL,
-                                IID_PPV_ARGS(&psw)))) {
+    HRESULT hr = CoCreateInstance(CLSID_ShellWindows, nullptr, CLSCTX_ALL,
+                                  IID_PPV_ARGS(&psw));
+    if (FAILED(hr)) {
+        Wh_Log(L"CoCreateInstance(ShellWindows) failed hr=0x%08X", hr);
         return false;
     }
 
     bool done = false;
+    bool matched = false;
     long count = 0;
     psw->get_Count(&count);
+    Wh_Log(L"ShellWindows count=%ld", count);
 
     for (long i = 0; i < count && !done; i++) {
         VARIANT vIndex;
@@ -197,36 +203,50 @@ bool InvokeNavPaneToggleForWindow(HWND hwndTarget) {
         if (SUCCEEDED(pdisp->QueryInterface(IID_PPV_ARGS(&pwba)))) {
             SHANDLE_PTR hwnd = 0;
             if (SUCCEEDED(pwba->get_HWND(&hwnd)) && (HWND)hwnd == hwndTarget) {
+                matched = true;
+                Wh_Log(L"Matched ShellWindow hwnd=%p", (void*)hwnd);
                 IServiceProvider* psp = nullptr;
                 if (SUCCEEDED(pwba->QueryInterface(IID_PPV_ARGS(&psp)))) {
                     IShellBrowser* psb = nullptr;
-                    if (SUCCEEDED(psp->QueryService(SID_STopLevelBrowser,
-                                                    IID_PPV_ARGS(&psb)))) {
+                    hr = psp->QueryService(SID_STopLevelBrowser,
+                                           IID_PPV_ARGS(&psb));
+                    if (SUCCEEDED(hr)) {
                         IShellView* psv = nullptr;
-                        if (SUCCEEDED(psb->QueryActiveShellView(&psv)) && psv) {
+                        hr = psb->QueryActiveShellView(&psv);
+                        if (SUCCEEDED(hr) && psv) {
                             IContextMenu* pcm = nullptr;
-                            if (SUCCEEDED(psv->GetItemObject(
-                                    SVGIO_BACKGROUND, IID_PPV_ARGS(&pcm))) &&
-                                pcm) {
+                            hr = psv->GetItemObject(SVGIO_BACKGROUND,
+                                                    IID_PPV_ARGS(&pcm));
+                            if (SUCCEEDED(hr) && pcm) {
                                 HMENU hMenu = CreatePopupMenu();
                                 if (hMenu) {
-                                    if (SUCCEEDED(pcm->QueryContextMenu(
-                                            hMenu, 0, 1, 0x7FFF, CMF_NORMAL))) {
+                                    hr = pcm->QueryContextMenu(
+                                        hMenu, 0, 1, 0x7FFF, CMF_NORMAL);
+                                    Wh_Log(L"QueryContextMenu hr=0x%08X", hr);
+                                    if (SUCCEEDED(hr)) {
                                         CMINVOKECOMMANDINFO ici = {0};
                                         ici.cbSize = sizeof(ici);
                                         ici.lpVerb = NAVPANE_VERB_A;
                                         ici.nShow = SW_SHOWNORMAL;
-                                        if (SUCCEEDED(pcm->InvokeCommand(&ici))) {
+                                        hr = pcm->InvokeCommand(&ici);
+                                        Wh_Log(L"InvokeCommand hr=0x%08X", hr);
+                                        if (SUCCEEDED(hr)) {
                                             done = true;
                                         }
                                     }
                                     DestroyMenu(hMenu);
                                 }
                                 pcm->Release();
+                            } else {
+                                Wh_Log(L"GetItemObject(background) hr=0x%08X", hr);
                             }
                             psv->Release();
+                        } else {
+                            Wh_Log(L"QueryActiveShellView hr=0x%08X", hr);
                         }
                         psb->Release();
+                    } else {
+                        Wh_Log(L"QueryService(TopLevelBrowser) hr=0x%08X", hr);
                     }
                     psp->Release();
                 }
@@ -234,6 +254,10 @@ bool InvokeNavPaneToggleForWindow(HWND hwndTarget) {
             pwba->Release();
         }
         pdisp->Release();
+    }
+
+    if (!matched) {
+        Wh_Log(L"No ShellWindow matched target hwnd");
     }
 
     psw->Release();
@@ -295,6 +319,8 @@ LRESULT CALLBACK KeyboardHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
         // Only process if we're in Explorer windows
         if (context == CONTEXT_EXPLORER && IsCtrlAltPPressed(wParam, lParam)) {
             HWND hForeground = GetForegroundWindow();
+            Wh_Log(L"Hotkey detected, foreground=%p workerTid=%lu",
+                   (void*)hForeground, g_workerThreadId);
             if (hForeground && g_workerThreadId) {
                 PostThreadMessageW(g_workerThreadId, WM_APP_TOGGLE_NAV_PANE, 0,
                                    (LPARAM)hForeground);
