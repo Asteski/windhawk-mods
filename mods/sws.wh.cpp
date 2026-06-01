@@ -269,6 +269,9 @@ Additional improvements made by [Asteski](https://github.com/Asteski).
         - showHoverBorder: true
           $name: Show Hover Border
           $description: Show a colored border around the thumbnail when hovered.
+        - showThumbnailShadow: false
+          $name: Show Thumbnail Shadow
+          $description: Draw a soft drop shadow behind each window thumbnail.
       $name: Thumbnails
     - HeaderContent:
         - iconSize: small
@@ -599,6 +602,7 @@ struct Settings {
     WCHAR switcherPosition[32];
     int switcherPositionMargin;
     bool showHoverBorder;
+    bool showThumbnailShadow;
     // Badge layout (macOS-style)
     bool enableBadgeLayout;
     WCHAR badgeIconPosition[32];
@@ -2688,6 +2692,47 @@ static int GetHeaderTopForEntry(const WindowEntry& e) {
     return rcHeader.top + (available - rowTitleH) / 2;
 }
 
+// Soft drop shadow behind a thumbnail. Drawn in the content layer, which sits
+// below the DWM thumbnail, so only the expanded/offset border peeks out around
+// the thumbnail edges, producing a drop-shadow halo.
+static void DrawThumbnailShadow(HDC hdc, const RECT& rc, int cornerRadius) {
+    int rcw = rc.right - rc.left;
+    int rch = rc.bottom - rc.top;
+    if (rcw <= 0 || rch <= 0) return;
+
+    Gdiplus::Graphics gfx(hdc);
+    gfx.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+
+    int maxPass = DpiScale(6, g_dpiX);
+    if (maxPass < 1) maxPass = 1;
+    int yOff = DpiScale(2, g_dpiY);  // nudge down for a "drop" feel
+
+    for (int pass = maxPass; pass > 0; --pass) {
+        int shadowAlpha = 16 - (pass * 2);
+        if (shadowAlpha < 1) shadowAlpha = 1;
+        Gdiplus::SolidBrush shadowBrush(Gdiplus::Color(shadowAlpha, 0, 0, 0));
+        int sp = pass;
+        Gdiplus::REAL sx = (Gdiplus::REAL)(rc.left - sp);
+        Gdiplus::REAL sy = (Gdiplus::REAL)(rc.top - sp + yOff);
+        Gdiplus::REAL sw = (Gdiplus::REAL)(rcw + sp * 2);
+        Gdiplus::REAL sh = (Gdiplus::REAL)(rch + sp * 2);
+        if (cornerRadius > 0) {
+            Gdiplus::REAL sd = cornerRadius * 2.0f + sp * 2.0f;
+            if (sd > sw) sd = sw;
+            if (sd > sh) sd = sh;
+            Gdiplus::GraphicsPath sPath;
+            sPath.AddArc(sx, sy, sd, sd, 180, 90);
+            sPath.AddArc(sx + sw - sd, sy, sd, sd, 270, 90);
+            sPath.AddArc(sx + sw - sd, sy + sh - sd, sd, sd, 0, 90);
+            sPath.AddArc(sx, sy + sh - sd, sd, sd, 90, 90);
+            sPath.CloseFigure();
+            gfx.FillPath(&shadowBrush, &sPath);
+        } else {
+            gfx.FillRectangle(&shadowBrush, sx, sy, sw, sh);
+        }
+    }
+}
+
 // Shared drawing routine for both layered and buffered paint paths
 static void DrawSwitcherContent(HDC hdc, bool fillBg, HWND hWnd) {
     RECT rcClient; GetClientRect(g_hSwitcher, &rcClient);
@@ -2732,6 +2777,13 @@ static void DrawSwitcherContent(HDC hdc, bool fillBg, HWND hWnd) {
         }
 
         // Hover thumbnail border is now drawn in DrawSwitcherOverlay so it sits above the thumbnail mask
+
+        // Drop shadow behind the thumbnail (below the DWM thumbnail layer).
+        if (g_settings.showThumbnails && g_settings.showThumbnailShadow &&
+            !(e.rcThumbActual.left == 0 && e.rcThumbActual.right == 0 &&
+              e.rcThumbActual.top == 0 && e.rcThumbActual.bottom == 0)) {
+            DrawThumbnailShadow(hdc, e.rcThumbActual, cornerRadius);
+        }
 
         if (g_settings.showThumbnails && cornerRadius > 0 && ThemeIs(L"none")) {
             MaskRectCorners(hdc, e.rcThumbActual, cornerRadius);
@@ -4471,6 +4523,7 @@ static void LoadSettings() {
     g_settings.autoFitTasks = Wh_GetIntSetting(L"Dimensions.autoFitTasks");
     g_settings.showThumbnails = Wh_GetIntSetting(L"Appearance.Thumbnails.showThumbnails");
     g_settings.showHoverBorder = Wh_GetIntSetting(L"Appearance.Thumbnails.showHoverBorder");
+    g_settings.showThumbnailShadow = Wh_GetIntSetting(L"Appearance.Thumbnails.showThumbnailShadow");
     g_settings.showTitle = Wh_GetIntSetting(L"Appearance.HeaderContent.showTitle");
     g_settings.showIcon = Wh_GetIntSetting(L"Appearance.HeaderContent.showIcon");
     if (!g_settings.showThumbnails && !g_settings.showTitle && !g_settings.showIcon) {
