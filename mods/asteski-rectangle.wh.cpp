@@ -33,12 +33,18 @@ the [Rectangle](https://rectangleapp.com/) app on macOS.
 | Almost maximize | `Alt` + `Y` |
 | Center          | `Alt` + `G` |
 | Minimize        | `Alt` + `M` |
+| Next display    | `Alt` + `]` |
+| Previous display| `Alt` + `[` |
+| Make smaller    | `Alt` + `-` |
+| Make larger     | `Alt` + `+` |
 | Restore         | `Alt` + `Z` |
 
 *Maximize* fills the work area ignoring gaps; *almost maximize* fills it while keeping
 the configured gaps. *Center* re-centers the active window without resizing it (unless a
-center width/height is set). *Restore* returns the window to where it was before its
-first snap.
+center width/height is set). *Next/previous display* move the window to the adjacent
+monitor (keeping its relative size and position, wrapping around). *Make smaller/larger*
+shrink or grow the window about its center by the configured resize step. *Restore*
+returns the window to where it was before its first snap.
 
 ## How it works
 
@@ -56,8 +62,9 @@ Each action's shortcut is free text in the form `[modifier+]...key`, for example
 - `ctrl+shift+left` — `Ctrl` + `Shift` + `Left arrow`
 
 Recognised modifier words are `alt`, `ctrl`, `shift`, and `win`; the key may be a letter
-`a`-`z`, a digit `0`-`9`, or `left`/`right`/`up`/`down`. Tokens are separated by `+` and
-are case-insensitive.
+`a`-`z`, a digit `0`-`9`, an arrow `left`/`right`/`up`/`down`, or one of the punctuation
+keys `[`, `]`, `-`. Tokens are separated by `+` and are case-insensitive. Because `+` is
+the separator, the `=`/`+` key must be written as `plus` (or `=`).
 
 The **Modifier key** setting adds a modifier (or two) on top of whatever you type for
 every action. So with Modifier = `Alt` and Left half = `q`, the shortcut is `Alt+Q`. Set
@@ -156,6 +163,20 @@ by the Minimize action.
     - keyMinimize: m
       $name: Minimize shortcut
       $description: Minimizes the active window.
+    - keyNextDisplay: "]"
+      $name: Next display shortcut
+      $description: Moves the window to the next monitor.
+    - keyPrevDisplay: "["
+      $name: Previous display shortcut
+      $description: Moves the window to the previous monitor.
+    - keySmaller: "-"
+      $name: Make smaller shortcut
+      $description: Shrinks the window around its center.
+    - keyLarger: plus
+      $name: Make larger shortcut
+      $description: >-
+        Grows the window around its center. Because "+" is the shortcut separator,
+        write this key as "plus" (or "="); it triggers on the unshifted "=" / "+" key.
     - keyRestore: z
       $name: Restore shortcut
       $description: Returns the window to where it was before the first snap.
@@ -192,6 +213,11 @@ by the Minimize action.
     - centerHeight: ""
       $name: Center action height (pixels)
       $description: Height to use for the Center action. Leave empty to keep the window's current height.
+    - resizeStep: 5
+      $name: Resize step (%)
+      $description: >-
+        How much Make smaller / larger change the window each press, as a percentage
+        of the monitor work area. Clamped to 1-50.
   $name: Dimensions
   $description: Gaps around snapped windows and sizes for the Center action.
 - rules:
@@ -259,6 +285,10 @@ enum class Action {
     AlmostMaximize,
     Center,
     Minimize,
+    NextDisplay,
+    PreviousDisplay,
+    MakeSmaller,
+    MakeLarger,
     RestorePrevious,
 };
 
@@ -267,7 +297,7 @@ constexpr UINT MOD_F_CTRL = 0x2;
 constexpr UINT MOD_F_SHIFT = 0x4;
 constexpr UINT MOD_F_WIN = 0x8;
 
-constexpr int ACTION_COUNT = 14;
+constexpr int ACTION_COUNT = 18;
 
 // Mask of modifiers that must be held (and only those) for an action to fire.
 static UINT g_modifierMask = MOD_F_ALT;
@@ -291,6 +321,10 @@ static GapMode g_gapMode = GapMode::Even;
 static int g_centerWidth = 0;
 static int g_centerHeight = 0;
 
+// Step (percentage of the monitor work area) by which Make smaller / larger
+// grow or shrink the active window.
+static int g_resizeStepPercent = 5;
+
 // Per-action trigger key and required modifier mask; both indexes line up with
 // g_actionByIndex below. A key of 0 means the action is unbound.
 static UINT g_actionKeys[ACTION_COUNT] = {};
@@ -300,7 +334,8 @@ static const Action g_actionByIndex[ACTION_COUNT] = {
     Action::BottomHalf,  Action::CenterHalf,    Action::TopLeft,
     Action::TopRight,    Action::BottomLeft,    Action::BottomRight,
     Action::Maximize,    Action::AlmostMaximize, Action::Center,
-    Action::Minimize,    Action::RestorePrevious,
+    Action::Minimize,    Action::NextDisplay,    Action::PreviousDisplay,
+    Action::MakeSmaller, Action::MakeLarger,     Action::RestorePrevious,
 };
 
 // Window placement captured before the first snap, so RestorePrevious can revert.
@@ -393,6 +428,20 @@ static UINT GetVkFromKeyName(const std::wstring& name) {
     }
     if (name == L"down") {
         return VK_DOWN;
+    }
+    // Punctuation keys, by symbol or by word. Note: the shortcut parser splits
+    // on "+", so the plus key must be written as "plus" (or "=" / "equals").
+    if (name == L"[" || name == L"lbracket" || name == L"leftbracket") {
+        return VK_OEM_4;
+    }
+    if (name == L"]" || name == L"rbracket" || name == L"rightbracket") {
+        return VK_OEM_6;
+    }
+    if (name == L"-" || name == L"minus") {
+        return VK_OEM_MINUS;
+    }
+    if (name == L"+" || name == L"plus" || name == L"=" || name == L"equals") {
+        return VK_OEM_PLUS;
     }
     if (name.size() == 1) {
         wchar_t c = name[0];
@@ -686,15 +735,158 @@ static void ApplyVisibleRect(HWND hWnd, int x, int y, int w, int h) {
                  SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE);
 }
 
+// Current visible bounds of the window (excludes the invisible drop-shadow border).
+static void GetVisibleRect(HWND hWnd, RECT* rect) {
+    if (FAILED(DwmGetWindowAttribute(hWnd, DWMWA_EXTENDED_FRAME_BOUNDS, rect,
+                                     sizeof(*rect)))) {
+        GetWindowRect(hWnd, rect);
+    }
+}
+
 // Current visible size of the window (excludes the invisible drop-shadow border).
 static void GetVisibleSize(HWND hWnd, int* width, int* height) {
     RECT rect = {};
-    if (FAILED(DwmGetWindowAttribute(hWnd, DWMWA_EXTENDED_FRAME_BOUNDS, &rect,
-                                     sizeof(rect)))) {
-        GetWindowRect(hWnd, &rect);
-    }
+    GetVisibleRect(hWnd, &rect);
     *width = rect.right - rect.left;
     *height = rect.bottom - rect.top;
+}
+
+static BOOL CALLBACK CollectMonitorsProc(HMONITOR hMonitor, HDC, LPRECT,
+                                         LPARAM lParam) {
+    auto* works = reinterpret_cast<std::vector<RECT>*>(lParam);
+    MONITORINFO mi = {};
+    mi.cbSize = sizeof(mi);
+    if (GetMonitorInfoW(hMonitor, &mi)) {
+        works->push_back(mi.rcWork);
+    }
+    return TRUE;
+}
+
+// Moves the window to the next/previous monitor (direction +1/-1, wrapping),
+// keeping its size and position relative to the work area (scaled if the target
+// monitor has a different work-area size). Preserves a maximized state.
+static void MoveToAdjacentDisplay(HWND hWnd, int direction) {
+    std::vector<RECT> works;
+    EnumDisplayMonitors(nullptr, nullptr, CollectMonitorsProc,
+                        reinterpret_cast<LPARAM>(&works));
+    if (works.size() < 2) {
+        return;  // Nothing to move to.
+    }
+
+    // Order monitors left-to-right, then top-to-bottom, for predictable cycling.
+    std::sort(works.begin(), works.end(), [](const RECT& a, const RECT& b) {
+        if (a.left != b.left) {
+            return a.left < b.left;
+        }
+        return a.top < b.top;
+    });
+
+    MONITORINFO cur = {};
+    cur.cbSize = sizeof(cur);
+    if (!GetMonitorInfoW(MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST),
+                         &cur)) {
+        return;
+    }
+
+    int curIndex = -1;
+    for (size_t i = 0; i < works.size(); i++) {
+        if (EqualRect(&works[i], &cur.rcWork)) {
+            curIndex = (int)i;
+            break;
+        }
+    }
+    if (curIndex < 0) {
+        return;
+    }
+
+    const int n = (int)works.size();
+    const RECT& src = works[curIndex];
+    const RECT& dst = works[((curIndex + direction) % n + n) % n];
+
+    const int srcW = src.right - src.left;
+    const int srcH = src.bottom - src.top;
+    const int dstW = dst.right - dst.left;
+    const int dstH = dst.bottom - dst.top;
+    if (srcW <= 0 || srcH <= 0 || dstW <= 0 || dstH <= 0) {
+        return;
+    }
+
+    const bool wasZoomed = IsZoomed(hWnd) != FALSE;
+    if (wasZoomed || IsIconic(hWnd)) {
+        ShowWindow(hWnd, SW_RESTORE);
+    }
+
+    RECT vis = {};
+    GetVisibleRect(hWnd, &vis);
+
+    // Map the window rect from the source work area to the destination one.
+    auto mapX = [&](LONG x) {
+        return dst.left + (int)((double)(x - src.left) * dstW / srcW);
+    };
+    auto mapY = [&](LONG y) {
+        return dst.top + (int)((double)(y - src.top) * dstH / srcH);
+    };
+
+    int x = mapX(vis.left);
+    int y = mapY(vis.top);
+    int w = (int)((double)(vis.right - vis.left) * dstW / srcW);
+    int h = (int)((double)(vis.bottom - vis.top) * dstH / srcH);
+    if (w < 1) w = 1;
+    if (h < 1) h = 1;
+
+    ApplyVisibleRect(hWnd, x, y, w, h);
+
+    if (wasZoomed) {
+        ShowWindow(hWnd, SW_MAXIMIZE);  // Re-maximize on the new monitor.
+    }
+}
+
+// Grows or shrinks the window about its center by the configured step
+// (direction +1 = larger, -1 = smaller), clamped to the monitor work area.
+static void ResizeFromCenter(HWND hWnd, int direction) {
+    if (IsIconic(hWnd) || IsZoomed(hWnd)) {
+        ShowWindow(hWnd, SW_RESTORE);
+    }
+
+    RECT vis = {};
+    GetVisibleRect(hWnd, &vis);
+    const int w = vis.right - vis.left;
+    const int h = vis.bottom - vis.top;
+    const int cx = vis.left + w / 2;
+    const int cy = vis.top + h / 2;
+
+    MONITORINFO mi = {};
+    mi.cbSize = sizeof(mi);
+    if (!GetMonitorInfoW(MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST),
+                         &mi)) {
+        return;
+    }
+    const RECT& work = mi.rcWork;
+    const int workW = work.right - work.left;
+    const int workH = work.bottom - work.top;
+
+    int stepX = workW * g_resizeStepPercent / 100;
+    int stepY = workH * g_resizeStepPercent / 100;
+    if (stepX < 1) stepX = 1;
+    if (stepY < 1) stepY = 1;
+
+    int newW = w + direction * stepX;
+    int newH = h + direction * stepY;
+
+    // Clamp between a small minimum and the full work area.
+    const int minW = 200;
+    const int minH = 150;
+    newW = std::max(minW, std::min(newW, workW));
+    newH = std::max(minH, std::min(newH, workH));
+
+    int x = cx - newW / 2;
+    int y = cy - newH / 2;
+    if (x < work.left) x = work.left;
+    if (y < work.top) y = work.top;
+    if (x + newW > work.right) x = work.right - newW;
+    if (y + newH > work.bottom) y = work.bottom - newH;
+
+    ApplyVisibleRect(hWnd, x, y, newW, newH);
 }
 
 static void SavePlacementIfNew(HWND hWnd) {
@@ -739,6 +931,16 @@ static void SnapWindow(HWND hWnd, Action action, bool noResize) {
     // size and is centered in the work area (handled by the cell logic below).
     if (action == Action::Maximize && !noResize) {
         ShowWindow(hWnd, SW_MAXIMIZE);
+        return;
+    }
+
+    if (action == Action::NextDisplay || action == Action::PreviousDisplay) {
+        MoveToAdjacentDisplay(hWnd, action == Action::NextDisplay ? 1 : -1);
+        return;
+    }
+
+    if (action == Action::MakeSmaller || action == Action::MakeLarger) {
+        ResizeFromCenter(hWnd, action == Action::MakeLarger ? 1 : -1);
         return;
     }
 
@@ -1005,6 +1207,14 @@ static void LoadSettings() {
         Wh_FreeStringSetting(centerHeight);
     }
 
+    g_resizeStepPercent = Wh_GetIntSetting(L"dimensions.resizeStep");
+    if (g_resizeStepPercent < 1) {
+        g_resizeStepPercent = 1;
+    }
+    if (g_resizeStepPercent > 50) {
+        g_resizeStepPercent = 50;
+    }
+
     static const PCWSTR keyNames[ACTION_COUNT] = {
         L"shortcuts.keyLeftHalf",   L"shortcuts.keyRightHalf",
         L"shortcuts.keyTopHalf",    L"shortcuts.keyBottomHalf",
@@ -1012,7 +1222,9 @@ static void LoadSettings() {
         L"shortcuts.keyTopRight",   L"shortcuts.keyBottomLeft",
         L"shortcuts.keyBottomRight", L"shortcuts.keyMaximize",
         L"shortcuts.keyAlmostMaximize", L"shortcuts.keyCenter",
-        L"shortcuts.keyMinimize",   L"shortcuts.keyRestore",
+        L"shortcuts.keyMinimize",   L"shortcuts.keyNextDisplay",
+        L"shortcuts.keyPrevDisplay", L"shortcuts.keySmaller",
+        L"shortcuts.keyLarger",     L"shortcuts.keyRestore",
     };
 
     for (int i = 0; i < ACTION_COUNT; i++) {
