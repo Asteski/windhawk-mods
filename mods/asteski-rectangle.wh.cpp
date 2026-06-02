@@ -6,7 +6,7 @@
 // @author          Asteski
 // @github          https://github.com/Asteski
 // @include         windhawk.exe
-// @compilerOptions -luser32
+// @compilerOptions -luser32 -ldwmapi
 // ==/WindhawkMod==
 
 // ==WindhawkModReadme==
@@ -40,6 +40,8 @@ it never reaches the focused application.
   `Ctrl`, `Shift`, `Win`, or `Alt + Ctrl`). The same modifier is shared by every action.
 - **Per-action key**: each action gets its own key (arrows, letters `A`-`Z`, or
   digits `0`-`9`).
+- **Gaps**: optional space (in pixels) between snapped windows and each screen edge
+  (top, bottom, left, right). All default to `0`, so windows sit flush by default.
 
 The modifier combination must match exactly: if you choose `Alt`, then `Ctrl+Alt+Left`
 will *not* trigger the action.
@@ -320,11 +322,24 @@ will *not* trigger the action.
     - "7": "7"
     - "8": "8"
     - "9": "9"
+- gapTop: 0
+  $name: Top gap (pixels)
+  $description: Space left between the window and the top edge of the screen.
+- gapBottom: 0
+  $name: Bottom gap (pixels)
+  $description: Space left between the window and the bottom edge of the screen.
+- gapLeft: 0
+  $name: Left gap (pixels)
+  $description: Space left between the window and the left edge of the screen.
+- gapRight: 0
+  $name: Right gap (pixels)
+  $description: Space left between the window and the right edge of the screen.
 */
 // ==/WindhawkModSettings==
 
 #include <windhawk_utils.h>
 #include <windows.h>
+#include <dwmapi.h>
 
 #include <atomic>
 #include <string>
@@ -348,6 +363,12 @@ constexpr int ACTION_COUNT = 6;
 
 // Mask of modifiers that must be held (and only those) for an action to fire.
 static UINT g_modifierMask = MOD_F_ALT;
+
+// Gaps (in pixels) left between snapped windows and each screen edge.
+static int g_gapTop = 0;
+static int g_gapBottom = 0;
+static int g_gapLeft = 0;
+static int g_gapRight = 0;
 
 // Per-action trigger virtual key codes, indexed so it lines up with the keys below.
 static UINT g_actionKeys[ACTION_COUNT] = {};
@@ -500,46 +521,55 @@ static void SnapWindow(HWND hWnd, Action action) {
         return;
     }
 
-    const RECT& work = mi.rcWork;
-    const int fullWidth = work.right - work.left;
-    const int fullHeight = work.bottom - work.top;
+    // Work area inset by the configured per-edge gaps.
+    RECT area = mi.rcWork;
+    area.left += g_gapLeft;
+    area.top += g_gapTop;
+    area.right -= g_gapRight;
+    area.bottom -= g_gapBottom;
+    if (area.right <= area.left || area.bottom <= area.top) {
+        return;
+    }
+
+    const int fullWidth = area.right - area.left;
+    const int fullHeight = area.bottom - area.top;
     const int halfWidth = fullWidth / 2;
     const int halfHeight = fullHeight / 2;
-    const int rightX = work.left + (fullWidth - halfWidth);
-    const int bottomY = work.top + (fullHeight - halfHeight);
+    const int rightX = area.left + (fullWidth - halfWidth);
+    const int bottomY = area.top + (fullHeight - halfHeight);
 
-    int x = work.left;
-    int y = work.top;
+    int x = area.left;
+    int y = area.top;
     int w = halfWidth;
     int h = fullHeight;
 
     switch (action) {
         case Action::LeftHalf:
-            x = work.left;
-            y = work.top;
+            x = area.left;
+            y = area.top;
             w = halfWidth;
             h = fullHeight;
             break;
         case Action::RightHalf:
             x = rightX;
-            y = work.top;
+            y = area.top;
             w = halfWidth;
             h = fullHeight;
             break;
         case Action::TopLeft:
-            x = work.left;
-            y = work.top;
+            x = area.left;
+            y = area.top;
             w = halfWidth;
             h = halfHeight;
             break;
         case Action::TopRight:
             x = rightX;
-            y = work.top;
+            y = area.top;
             w = halfWidth;
             h = halfHeight;
             break;
         case Action::BottomLeft:
-            x = work.left;
+            x = area.left;
             y = bottomY;
             w = halfWidth;
             h = halfHeight;
@@ -554,7 +584,26 @@ static void SnapWindow(HWND hWnd, Action action) {
             return;
     }
 
-    SetWindowPos(hWnd, nullptr, x, y, w, h,
+    // GetWindowRect/SetWindowPos coordinates include the invisible drop-shadow
+    // border that DWM draws around the window. Measure the real visible bounds
+    // and expand the target rect by those margins so the window sits flush.
+    RECT windowRect = {};
+    RECT frameRect = {};
+    int marginLeft = 0, marginTop = 0, marginRight = 0, marginBottom = 0;
+    if (GetWindowRect(hWnd, &windowRect) &&
+        SUCCEEDED(DwmGetWindowAttribute(hWnd, DWMWA_EXTENDED_FRAME_BOUNDS,
+                                        &frameRect, sizeof(frameRect)))) {
+        marginLeft = frameRect.left - windowRect.left;
+        marginTop = frameRect.top - windowRect.top;
+        marginRight = windowRect.right - frameRect.right;
+        marginBottom = windowRect.bottom - frameRect.bottom;
+    }
+
+    SetWindowPos(hWnd, nullptr,
+                 x - marginLeft,
+                 y - marginTop,
+                 w + marginLeft + marginRight,
+                 h + marginTop + marginBottom,
                  SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE);
 }
 
@@ -584,6 +633,11 @@ static void LoadSettings() {
     if (modifier) {
         Wh_FreeStringSetting(modifier);
     }
+
+    g_gapTop = Wh_GetIntSetting(L"gapTop");
+    g_gapBottom = Wh_GetIntSetting(L"gapBottom");
+    g_gapLeft = Wh_GetIntSetting(L"gapLeft");
+    g_gapRight = Wh_GetIntSetting(L"gapRight");
 
     static const PCWSTR keyNames[ACTION_COUNT] = {
         L"keyLeftHalf", L"keyRightHalf", L"keyTopLeft",
