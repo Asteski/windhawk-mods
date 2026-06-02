@@ -118,71 +118,67 @@ by the Minimize action.
     - win_alt: Win + Alt
     - win_ctrl: Win + Ctrl
     - win_shift: Win + Shift
-- actions:
-    - keyLeftHalf: q
-      $name: Left half shortcut
-      $description: >-
-          Shortcut text, e.g. "q", "ctrl+q", or "ctrl+shift+left". The Modifier key above is
-          added on top. Leave empty to unbind. Same format for every action below.
-    - keyRightHalf: w
-      $name: Right half shortcut
-    - keyTopHalf: e
-      $name: Top half shortcut
-    - keyBottomHalf: r
-      $name: Bottom half shortcut
-    - keyCenterHalf: t
-      $name: Center half shortcut
-      $description: A half-width strip in the middle of the screen (full height).
-    - keyTopLeft: u
-      $name: Top-left shortcut
-    - keyTopRight: i
-      $name: Top-right shortcut
-    - keyBottomLeft: j
-      $name: Bottom-left shortcut
-    - keyBottomRight: k
-      $name: Bottom-right shortcut
-    - keyMaximize: h
-      $name: Maximize shortcut
-      $description: Fills the whole work area, ignoring any configured gaps.
-    - keyAlmostMaximize: y
-      $name: Almost-maximize shortcut
-      $description: Fills the work area but keeps the configured gaps.
-    - keyCenter: g
-      $name: Center shortcut
-      $description: Centers the window without changing its size (unless a size is set below).
-    - keyMinimize: m
-      $name: Minimize shortcut
-      $description: Minimizes the active window.
-    - keyRestore: z
-      $name: Restore shortcut
-      $description: Returns the window to where it was before the first snap.
-  $name: Actions
-- dimensions:
-    - gapTop: 0
-      $name: Top gap (pixels)
-      $description: Space left above the window, even when it borders another window.
-    - gapBottom: 0
-      $name: Bottom gap (pixels)
-      $description: Space left below the window, even when it borders another window.
-    - gapLeft: 0
-      $name: Left gap (pixels)
-      $description: Space left to the left of the window, even when it borders another window.
-    - gapRight: 0
-      $name: Right gap (pixels)
-      $description: Space left to the right of the window, even when it borders another window.
-    - screenEdgeGapsOnly: false
-      $name: Only gap screen edges
-      $description: >-
-          When enabled, gaps are only applied to window sides that touch a screen edge,
-          so adjacent windows meet flush in the middle. When disabled, every side of every
-          window is gapped.
-    - centerWidth: ""
-      $name: Center action width (pixels)
-      $description: Width to use for the Center action. Leave empty to keep the window's current width.
-    - centerHeight: ""
-      $name: Center action height (pixels)
-      $description: Height to use for the Center action. Leave empty to keep the window's current height.
-  $name: Dimensions
+- keyLeftHalf: q
+  $name: Left half shortcut
+  $description: >-
+    Shortcut text, e.g. "q", "ctrl+q", or "ctrl+shift+left". The Modifier key above is
+    added on top. Leave empty to unbind. Same format for every action below.
+- keyRightHalf: w
+  $name: Right half shortcut
+- keyTopHalf: e
+  $name: Top half shortcut
+- keyBottomHalf: r
+  $name: Bottom half shortcut
+- keyCenterHalf: t
+  $name: Center half shortcut
+  $description: A half-width strip in the middle of the screen (full height).
+- keyTopLeft: u
+  $name: Top-left shortcut
+- keyTopRight: i
+  $name: Top-right shortcut
+- keyBottomLeft: j
+  $name: Bottom-left shortcut
+- keyBottomRight: k
+  $name: Bottom-right shortcut
+- keyMaximize: h
+  $name: Maximize shortcut
+  $description: Fills the whole work area, ignoring any configured gaps.
+- keyAlmostMaximize: y
+  $name: Almost-maximize shortcut
+  $description: Fills the work area but keeps the configured gaps.
+- keyCenter: g
+  $name: Center shortcut
+  $description: Centers the window without changing its size (unless a size is set below).
+- keyMinimize: m
+  $name: Minimize shortcut
+  $description: Minimizes the active window.
+- keyRestore: z
+  $name: Restore shortcut
+  $description: Returns the window to where it was before the first snap.
+- gapTop: 0
+  $name: Top gap (pixels)
+  $description: Space left above the window, even when it borders another window.
+- gapBottom: 0
+  $name: Bottom gap (pixels)
+  $description: Space left below the window, even when it borders another window.
+- gapLeft: 0
+  $name: Left gap (pixels)
+  $description: Space left to the left of the window, even when it borders another window.
+- gapRight: 0
+  $name: Right gap (pixels)
+  $description: Space left to the right of the window, even when it borders another window.
+- screenEdgeGapsOnly: false
+  $name: Only gap screen edges
+  $description: >-
+    When enabled, gaps are only applied to window sides that touch a screen edge,
+    so adjacent windows meet flush in the middle. When disabled, every side of every
+    window is gapped.
+- centerWidth: ""
+  $name: Center action width (pixels)
+  $description: Width to use for the Center action. Leave empty to keep the window's current width.
+- centerHeight: ""
+  $name: Center action height (pixels)
+  $description: Height to use for the Center action. Leave empty to keep the window's current height.
 - rules:
     - - executable_names: ""
         $name: Executable name(s)
