@@ -6,7 +6,7 @@
 // @author          Asteski
 // @github          https://github.com/Asteski
 // @include         windhawk.exe
-// @compilerOptions -luser32 -ldwmapi -ladvapi32
+// @compilerOptions -luser32 -ldwmapi
 // ==/WindhawkMod==
 
 // ==WindhawkModReadme==
@@ -252,14 +252,6 @@ by the Minimize action.
   $description: >-
     Automatically apply an action to an app's windows when they open. Add one
     item per executable/action combination.
-- controlElevated: false
-  $name: Control administrator (elevated) windows
-  $description: >-
-    Allow controlling windows of apps running as administrator. This only works when
-    Windhawk itself runs as administrator (Windows can't elevate the mod at runtime).
-    When this is enabled but Windhawk is not elevated, a warning is written to the mod
-    log with instructions; restart Windhawk as administrator and elevated windows will
-    then respond to the shortcuts.
 */
 // ==/WindhawkModSettings==
 
@@ -403,25 +395,6 @@ static HMODULE GetThisModule() {
             GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
         reinterpret_cast<LPCWSTR>(&GetThisModule), &module);
     return module;
-}
-
-// True if the host process (windhawk.exe) is running elevated. Controlling the
-// windows of elevated apps requires this; a non-elevated process is blocked by
-// UAC's UIPI from both repositioning their windows and seeing their keystrokes.
-static bool IsCurrentProcessElevated() {
-    HANDLE token = nullptr;
-    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token)) {
-        return false;
-    }
-    TOKEN_ELEVATION elevation = {};
-    DWORD size = sizeof(elevation);
-    bool elevated = false;
-    if (GetTokenInformation(token, TokenElevation, &elevation, sizeof(elevation),
-                            &size)) {
-        elevated = elevation.TokenIsElevated != 0;
-    }
-    CloseHandle(token);
-    return elevated;
 }
 
 static std::wstring ToLower(std::wstring s) {
@@ -669,16 +642,6 @@ static std::wstring GetWindowProcessExeName(HWND hWnd) {
     return result;
 }
 
-// Bare lowercase executable name of the current (host) process.
-static std::wstring GetCurrentProcessExeName() {
-    wchar_t path[MAX_PATH] = {};
-    DWORD n = GetModuleFileNameW(nullptr, path, ARRAYSIZE(path));
-    if (n == 0) {
-        return L"";
-    }
-    return ToLower(BaseName(std::wstring(path, n)));
-}
-
 // Finds the action (and no-resize flag) for the first rule matching exeName.
 // Returns Action::None if no rule matches.
 static Action FindRuleAction(const std::wstring& exeName, bool* outNoResize) {
@@ -764,24 +727,12 @@ static void ApplyVisibleRect(HWND hWnd, int x, int y, int w, int h) {
         marginBottom = windowRect.bottom - frameRect.bottom;
     }
 
-    SetLastError(0);
-    BOOL ok = SetWindowPos(hWnd, nullptr,
-                           x - marginLeft,
-                           y - marginTop,
-                           w + marginLeft + marginRight,
-                           h + marginTop + marginBottom,
-                           SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE);
-    if (!ok) {
-        DWORD err = GetLastError();
-        if (err == ERROR_ACCESS_DENIED) {
-            Wh_Log(L"Window Manager: SetWindowPos was denied (error 5) for this "
-                   L"window. It almost certainly belongs to an elevated "
-                   L"(administrator) app while Windhawk is NOT elevated. Run "
-                   L"Windhawk as administrator to control it.");
-        } else {
-            Wh_Log(L"Window Manager: SetWindowPos failed, error=%lu", err);
-        }
-    }
+    SetWindowPos(hWnd, nullptr,
+                 x - marginLeft,
+                 y - marginTop,
+                 w + marginLeft + marginRight,
+                 h + marginTop + marginBottom,
+                 SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE);
 }
 
 // Current visible bounds of the window (excludes the invisible drop-shadow border).
@@ -1361,24 +1312,6 @@ static void LoadSettings() {
         std::lock_guard<std::mutex> lock(g_ruleHandledMutex);
         g_ruleHandledWindows.clear();
     }
-
-    // Elevated-window control depends entirely on the host process's integrity
-    // level, which can't be changed from inside the mod. When the user asks for
-    // it but Windhawk isn't elevated, point them at the only thing that works.
-    bool controlElevated = Wh_GetIntSetting(L"controlElevated") != 0;
-    if (controlElevated) {
-        if (IsCurrentProcessElevated()) {
-            Wh_Log(L"Window Manager: running elevated; administrator windows can "
-                   L"be controlled.");
-        } else {
-            Wh_Log(L"Window Manager: \"Control administrator (elevated) windows\" "
-                   L"is enabled, but Windhawk is NOT running as administrator. "
-                   L"Windows blocks a non-elevated process from moving elevated "
-                   L"app windows or seeing their keystrokes. To fix this, restart "
-                   L"Windhawk as administrator (right-click Windhawk > Run as "
-                   L"administrator, or enable it in the Windhawk app's settings).");
-        }
-    }
 }
 
 static DWORD WINAPI WorkerThreadProc(LPVOID) {
@@ -1450,10 +1383,6 @@ static DWORD WINAPI HookThreadProc(LPVOID) {
 }
 
 BOOL Wh_ModInit() {
-    Wh_Log(L"Window Manager: host process '%s', elevated = %s",
-           GetCurrentProcessExeName().c_str(),
-           IsCurrentProcessElevated() ? L"yes" : L"no");
-
     LoadSettings();
 
     g_quit = false;
