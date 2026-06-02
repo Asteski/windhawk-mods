@@ -111,74 +111,74 @@ by the Minimize action.
 
 // ==WindhawkModSettings==
 /*
+- modifier: alt
+  $name: Modifier key
+  $description: >-
+    Added to every action's shortcut, on top of any modifiers typed into the action
+    itself. Choose None to use only the modifiers written in each shortcut.
+  $options:
+    - none: None
+    - alt: Alt
+    - ctrl: Ctrl
+    - shift: Shift
+    - win: Win
+    - alt_ctrl: Alt + Ctrl
+    - alt_shift: Alt + Shift
+    - ctrl_shift: Ctrl + Shift
+    - win_alt: Win + Alt
+    - win_ctrl: Win + Ctrl
+    - win_shift: Win + Shift
 - shortcuts:
-    - modifier: alt
-      $name: Modifier key
-      $description: >-
-        Added to every action's shortcut, on top of any modifiers typed into the action
-        itself. Choose None to use only the modifiers written in each shortcut.
-      $options:
-        - none: None
-        - alt: Alt
-        - ctrl: Ctrl
-        - shift: Shift
-        - win: Win
-        - alt_ctrl: Alt + Ctrl
-        - alt_shift: Alt + Shift
-        - ctrl_shift: Ctrl + Shift
-        - win_alt: Win + Alt
-        - win_ctrl: Win + Ctrl
-        - win_shift: Win + Shift
     - keyLeftHalf: q
-      $name: Left half shortcut
+      $name: Left half
       $description: >-
         Shortcut text, e.g. "q", "ctrl+q", or "ctrl+shift+left". The Modifier key above is
         added on top. Leave empty to unbind. Same format for every action below.
     - keyRightHalf: w
-      $name: Right half shortcut
+      $name: Right half
     - keyTopHalf: e
-      $name: Top half shortcut
+      $name: Top half
     - keyBottomHalf: r
-      $name: Bottom half shortcut
+      $name: Bottom half
     - keyCenterHalf: t
-      $name: Center half shortcut
+      $name: Center half
       $description: A half-width strip in the middle of the screen (full height).
     - keyTopLeft: u
-      $name: Top-left shortcut
+      $name: Top-left
     - keyTopRight: i
-      $name: Top-right shortcut
+      $name: Top-right
     - keyBottomLeft: j
-      $name: Bottom-left shortcut
+      $name: Bottom-left
     - keyBottomRight: k
-      $name: Bottom-right shortcut
+      $name: Bottom-right
     - keyMaximize: h
-      $name: Maximize shortcut
+      $name: Maximize
       $description: Fills the whole work area, ignoring any configured gaps.
     - keyAlmostMaximize: y
-      $name: Almost-maximize shortcut
+      $name: Almost-maximize
       $description: Fills the work area but keeps the configured gaps.
     - keyCenter: g
-      $name: Center shortcut
+      $name: Center
       $description: Centers the window without changing its size (unless a size is set below).
     - keyMinimize: m
-      $name: Minimize shortcut
+      $name: Minimize
       $description: Minimizes the active window.
     - keyNextDisplay: "]"
-      $name: Next display shortcut
+      $name: Next display
       $description: Moves the window to the next monitor.
     - keyPrevDisplay: "["
-      $name: Previous display shortcut
+      $name: Previous display
       $description: Moves the window to the previous monitor.
     - keySmaller: "-"
-      $name: Make smaller shortcut
+      $name: Make smaller
       $description: Shrinks the window around its center.
     - keyLarger: plus
-      $name: Make larger shortcut
+      $name: Make larger
       $description: >-
         Grows the window around its center. Because "+" is the shortcut separator,
         write this key as "plus" (or "="); it triggers on the unshifted "=" / "+" key.
     - keyRestore: z
-      $name: Restore shortcut
+      $name: Restore
       $description: Returns the window to where it was before the first snap.
   $name: Shortcuts
   $description: Keyboard shortcuts for each window action.
@@ -1171,7 +1171,7 @@ static void ApplyRulesToExistingWindows() {
 }
 
 static void LoadSettings() {
-    PCWSTR modifier = Wh_GetStringSetting(L"shortcuts.modifier");
+    PCWSTR modifier = Wh_GetStringSetting(L"modifier");
     g_modifierMask = ParseModifierMask(modifier ? modifier : L"alt");
     if (modifier) {
         Wh_FreeStringSetting(modifier);
