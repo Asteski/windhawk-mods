@@ -76,6 +76,20 @@ that key is swallowed system-wide and can no longer be typed normally.
   flush in the middle).
 - **Center size**: optional width/height (in pixels) for the Center action. Leave either
   empty to keep the window's current width or height.
+
+## Auto-snap rules
+
+Beyond keyboard shortcuts, you can have the mod snap certain apps automatically. Each
+**Auto-snap rule** pairs one or more executable names with an action: when a window of a
+matching process is shown, that action is applied to it. Rules also run against
+already-open windows when you save settings, so adding a rule snaps matching windows that
+are already on screen.
+
+Executable names are case-insensitive and the `.exe` suffix is optional; list several in
+one field separated by `,`, `;`, or `|` (e.g. `notepad; calc.exe`). The available
+actions are the same region actions as the shortcuts (Maximize, halves, corners, etc.);
+*Restore* is intentionally not offered, since a freshly opened window has nothing to
+restore to.
 */
 // ==/WindhawkModReadme==
 
@@ -156,6 +170,32 @@ that key is swallowed system-wide and can no longer be typed normally.
 - centerHeight: ""
   $name: Center action height (pixels)
   $description: Height to use for the Center action. Leave empty to keep the window's current height.
+- rules:
+    - - executable_names: ""
+        $name: Executable name(s)
+        $description: >-
+          One or more executable names. Separators: comma, semicolon, pipe.
+          Case-insensitive; the ".exe" suffix is optional. Example:
+          "notepad; calc.exe".
+      - action: maximize
+        $name: Action
+        $options:
+          - left-half: Left half
+          - right-half: Right half
+          - top-half: Top half
+          - bottom-half: Bottom half
+          - center-half: Center half
+          - top-left: Top-left
+          - top-right: Top-right
+          - bottom-left: Bottom-left
+          - bottom-right: Bottom-right
+          - maximize: Maximize
+          - almost-maximize: Almost maximize
+          - center: Center
+  $name: Auto-snap rules
+  $description: >-
+    Automatically apply an action to an app's windows when they open. Add one
+    item per executable/action combination.
 */
 // ==/WindhawkModSettings==
 
@@ -163,11 +203,16 @@ that key is swallowed system-wide and can no longer be typed normally.
 #include <windows.h>
 #include <dwmapi.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cstdlib>
 #include <cwctype>
+#include <deque>
+#include <mutex>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
 enum class Action {
     None,
@@ -225,16 +270,49 @@ static const Action g_actionByIndex[ACTION_COUNT] = {
 // Accessed only from the worker thread, so no synchronization is needed.
 static std::unordered_map<HWND, WINDOWPLACEMENT> g_savedPlacements;
 
+// Auto-snap rules: when a window of a matching executable is shown, the chosen
+// action is applied to it automatically.
+struct AppRule {
+    std::vector<std::wstring> executables;
+    Action action = Action::None;
+};
+static std::vector<AppRule> g_appRules;
+static std::mutex g_appRulesMutex;
+
+// Windows already auto-snapped by a rule, so a single window isn't snapped
+// repeatedly as it raises further show events.
+static std::unordered_set<HWND> g_ruleHandledWindows;
+static std::mutex g_ruleHandledMutex;
+
 static HHOOK g_keyboardHook = nullptr;
+static HWINEVENTHOOK g_winEventHook = nullptr;
 static HANDLE g_hookThread = nullptr;
 static DWORD g_hookThreadId = 0;
 static HANDLE g_hookReadyEvent = nullptr;
 
+// Work queue drained by the worker thread; producers are the keyboard hook and
+// the window-event hook, so it is guarded by a mutex.
+struct WorkItem {
+    HWND hWnd;
+    Action action;
+};
+static std::deque<WorkItem> g_workQueue;
+static std::mutex g_workQueueMutex;
+
 static HANDLE g_workerThread = nullptr;
 static HANDLE g_workEvent = nullptr;
 static std::atomic<bool> g_quit{false};
-static std::atomic<HWND> g_pendingWindow{nullptr};
-static std::atomic<int> g_pendingAction{(int)Action::None};
+
+static void EnqueueWork(HWND hWnd, Action action) {
+    if (!hWnd || action == Action::None) {
+        return;
+    }
+    {
+        std::lock_guard<std::mutex> lock(g_workQueueMutex);
+        g_workQueue.push_back({hWnd, action});
+    }
+    SetEvent(g_workEvent);
+}
 
 static HMODULE GetThisModule() {
     HMODULE module = nullptr;
@@ -383,6 +461,111 @@ static bool ParseShortcut(const std::wstring& text, UINT* outVk, UINT* outMods) 
     }
 
     return haveKey;
+}
+
+// File name portion of a path (handles both slash styles).
+static std::wstring BaseName(const std::wstring& path) {
+    size_t pos = path.find_last_of(L"\\/");
+    return pos == std::wstring::npos ? path : path.substr(pos + 1);
+}
+
+// Reduces a user-entered executable reference to a bare lowercase file name,
+// e.g. `"C:\Windows\notepad"` -> `notepad.exe`.
+static std::wstring NormalizeExecutableName(std::wstring name) {
+    name = Trim(name);
+    if (name.size() >= 2 && name.front() == L'"' && name.back() == L'"') {
+        name = name.substr(1, name.size() - 2);
+    }
+    if (name.empty()) {
+        return name;
+    }
+    name = ToLower(Trim(BaseName(name)));
+    if (!name.empty() && name.find(L'.') == std::wstring::npos) {
+        name += L".exe";
+    }
+    return name;
+}
+
+// Splits a comma/semicolon/pipe-separated list of executable names, normalizing
+// and de-duplicating each entry.
+static std::vector<std::wstring> SplitExecutableList(const std::wstring& value) {
+    std::vector<std::wstring> result;
+    size_t start = 0;
+    while (start <= value.size()) {
+        size_t pos = value.find_first_of(L",;|", start);
+        std::wstring part = pos == std::wstring::npos
+                                ? value.substr(start)
+                                : value.substr(start, pos - start);
+
+        std::wstring normalized = NormalizeExecutableName(part);
+        if (!normalized.empty() &&
+            std::find(result.begin(), result.end(), normalized) ==
+                result.end()) {
+            result.push_back(normalized);
+        }
+
+        if (pos == std::wstring::npos) {
+            break;
+        }
+        start = pos + 1;
+    }
+    return result;
+}
+
+static Action ParseActionName(const std::wstring& value) {
+    std::wstring v = ToLower(Trim(value));
+    if (v == L"left-half") return Action::LeftHalf;
+    if (v == L"right-half") return Action::RightHalf;
+    if (v == L"top-half") return Action::TopHalf;
+    if (v == L"bottom-half") return Action::BottomHalf;
+    if (v == L"center-half") return Action::CenterHalf;
+    if (v == L"top-left") return Action::TopLeft;
+    if (v == L"top-right") return Action::TopRight;
+    if (v == L"bottom-left") return Action::BottomLeft;
+    if (v == L"bottom-right") return Action::BottomRight;
+    if (v == L"maximize") return Action::Maximize;
+    if (v == L"almost-maximize") return Action::AlmostMaximize;
+    if (v == L"center") return Action::Center;
+    return Action::None;
+}
+
+// Bare lowercase executable name of the process that owns the window.
+static std::wstring GetWindowProcessExeName(HWND hWnd) {
+    DWORD pid = 0;
+    GetWindowThreadProcessId(hWnd, &pid);
+    if (!pid) {
+        return L"";
+    }
+
+    HANDLE process =
+        OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!process) {
+        return L"";
+    }
+
+    wchar_t path[MAX_PATH] = {};
+    DWORD size = ARRAYSIZE(path);
+    std::wstring result;
+    if (QueryFullProcessImageNameW(process, 0, path, &size)) {
+        result = ToLower(BaseName(std::wstring(path, size)));
+    }
+    CloseHandle(process);
+    return result;
+}
+
+static Action FindRuleAction(const std::wstring& exeName) {
+    if (exeName.empty()) {
+        return Action::None;
+    }
+    std::lock_guard<std::mutex> lock(g_appRulesMutex);
+    for (const auto& rule : g_appRules) {
+        for (const auto& exe : rule.executables) {
+            if (exe == exeName) {
+                return rule.action;
+            }
+        }
+    }
+    return Action::None;
 }
 
 static UINT GetCurrentModifierMask() {
@@ -606,14 +789,82 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
 
         Action action = MatchAction(kbd->vkCode, GetCurrentModifierMask());
         if (action != Action::None) {
-            g_pendingWindow = GetForegroundWindow();
-            g_pendingAction = (int)action;
-            SetEvent(g_workEvent);
+            EnqueueWork(GetForegroundWindow(), action);
             return 1;  // Swallow the key so the focused app never sees it.
         }
     }
 
     return CallNextHookEx(g_keyboardHook, nCode, wParam, lParam);
+}
+
+// Applies the matching rule's action to a window the first time we see it shown.
+static void TryApplyRuleToWindow(HWND hWnd) {
+    if (!hWnd || !IsEligibleWindow(hWnd)) {
+        return;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(g_appRulesMutex);
+        if (g_appRules.empty()) {
+            return;
+        }
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(g_ruleHandledMutex);
+        if (g_ruleHandledWindows.count(hWnd)) {
+            return;
+        }
+    }
+
+    Action action = FindRuleAction(GetWindowProcessExeName(hWnd));
+    if (action == Action::None) {
+        return;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(g_ruleHandledMutex);
+        if (!g_ruleHandledWindows.insert(hWnd).second) {
+            return;  // Another event handled it first.
+        }
+    }
+
+    EnqueueWork(hWnd, action);
+}
+
+void CALLBACK WinEventProc(HWINEVENTHOOK, DWORD event, HWND hWnd, LONG idObject,
+                           LONG idChild, DWORD, DWORD) {
+    if (idObject != OBJID_WINDOW || idChild != CHILDID_SELF || !hWnd) {
+        return;
+    }
+
+    if (event == EVENT_OBJECT_DESTROY) {
+        std::lock_guard<std::mutex> lock(g_ruleHandledMutex);
+        g_ruleHandledWindows.erase(hWnd);
+        return;
+    }
+
+    // EVENT_OBJECT_SHOW.
+    TryApplyRuleToWindow(hWnd);
+}
+
+static BOOL CALLBACK EnumExistingWindowsProc(HWND hWnd, LPARAM) {
+    if (IsWindowVisible(hWnd)) {
+        TryApplyRuleToWindow(hWnd);
+    }
+    return TRUE;
+}
+
+// Snaps already-open windows that match a rule (on init and after a settings
+// change), so adding a rule affects windows that are already on screen.
+static void ApplyRulesToExistingWindows() {
+    {
+        std::lock_guard<std::mutex> lock(g_appRulesMutex);
+        if (g_appRules.empty()) {
+            return;
+        }
+    }
+    EnumWindows(EnumExistingWindowsProc, 0);
 }
 
 static void LoadSettings() {
@@ -686,19 +937,71 @@ static void LoadSettings() {
             }
         }
     }
+
+    // Auto-snap rules.
+    std::vector<AppRule> newRules;
+    for (int i = 0; i <= 255; i++) {
+        wchar_t key[256] = {};
+
+        swprintf_s(key, L"rules[%d].executable_names", i);
+        PCWSTR pExec = Wh_GetStringSetting(key);
+        std::wstring execNames = pExec ? pExec : L"";
+        if (pExec) {
+            Wh_FreeStringSetting(pExec);
+        }
+
+        swprintf_s(key, L"rules[%d].action", i);
+        PCWSTR pAction = Wh_GetStringSetting(key);
+        std::wstring actionValue = pAction ? pAction : L"";
+        if (pAction) {
+            Wh_FreeStringSetting(pAction);
+        }
+
+        if (execNames.empty() && actionValue.empty()) {
+            // Tolerate a small gap of blank entries before giving up.
+            if (i >= (int)newRules.size() + 2) {
+                break;
+            }
+            continue;
+        }
+
+        AppRule rule;
+        rule.executables = SplitExecutableList(execNames);
+        rule.action = ParseActionName(actionValue);
+        if (!rule.executables.empty() && rule.action != Action::None) {
+            newRules.push_back(std::move(rule));
+        }
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(g_appRulesMutex);
+        g_appRules = std::move(newRules);
+    }
+    {
+        std::lock_guard<std::mutex> lock(g_ruleHandledMutex);
+        g_ruleHandledWindows.clear();
+    }
 }
 
 static DWORD WINAPI WorkerThreadProc(LPVOID) {
     for (;;) {
         WaitForSingleObject(g_workEvent, INFINITE);
-        if (g_quit.load()) {
-            break;
+
+        for (;;) {
+            WorkItem item;
+            {
+                std::lock_guard<std::mutex> lock(g_workQueueMutex);
+                if (g_workQueue.empty()) {
+                    break;
+                }
+                item = g_workQueue.front();
+                g_workQueue.pop_front();
+            }
+            SnapWindow(item.hWnd, item.action);
         }
 
-        HWND hWnd = g_pendingWindow.exchange(nullptr);
-        Action action = (Action)g_pendingAction.exchange((int)Action::None);
-        if (hWnd && action != Action::None) {
-            SnapWindow(hWnd, action);
+        if (g_quit.load()) {
+            break;
         }
     }
     return 0;
@@ -714,6 +1017,17 @@ static DWORD WINAPI HookThreadProc(LPVOID) {
     }
 
     Wh_Log(L"Rectangle: keyboard hook installed");
+
+    // Out-of-context window-event hook used to auto-snap matching apps. Events
+    // are delivered to this thread's message queue, so it must be installed
+    // here. WINEVENT_SKIPOWNPROCESS keeps windhawk.exe's own windows untouched.
+    g_winEventHook = SetWinEventHook(
+        EVENT_OBJECT_DESTROY, EVENT_OBJECT_SHOW, nullptr, WinEventProc, 0, 0,
+        WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
+    if (!g_winEventHook) {
+        Wh_Log(L"Rectangle: SetWinEventHook failed, error=%lu", GetLastError());
+    }
+
     SetEvent(g_hookReadyEvent);
 
     MSG msg;
@@ -726,6 +1040,10 @@ static DWORD WINAPI HookThreadProc(LPVOID) {
         DispatchMessageW(&msg);
     }
 
+    if (g_winEventHook) {
+        UnhookWinEvent(g_winEventHook);
+        g_winEventHook = nullptr;
+    }
     if (g_keyboardHook) {
         UnhookWindowsHookEx(g_keyboardHook);
         g_keyboardHook = nullptr;
@@ -785,11 +1103,14 @@ BOOL Wh_ModInit() {
     CloseHandle(g_hookReadyEvent);
     g_hookReadyEvent = nullptr;
 
+    ApplyRulesToExistingWindows();
+
     return TRUE;
 }
 
 void Wh_ModSettingsChanged() {
     LoadSettings();
+    ApplyRulesToExistingWindows();
 }
 
 void Wh_ModUninit() {
@@ -818,10 +1139,22 @@ void Wh_ModUninit() {
         g_workEvent = nullptr;
     }
 
+    if (g_winEventHook) {
+        UnhookWinEvent(g_winEventHook);
+        g_winEventHook = nullptr;
+    }
     if (g_keyboardHook) {
         UnhookWindowsHookEx(g_keyboardHook);
         g_keyboardHook = nullptr;
     }
 
     g_savedPlacements.clear();
+    {
+        std::lock_guard<std::mutex> lock(g_workQueueMutex);
+        g_workQueue.clear();
+    }
+    {
+        std::lock_guard<std::mutex> lock(g_ruleHandledMutex);
+        g_ruleHandledWindows.clear();
+    }
 }
