@@ -20,8 +20,8 @@ the [Rectangle](https://rectangleapp.com/) app on macOS.
 
 | Action       | Shortcut          |
 | ------------ | ----------------- |
-| Left half    | `Alt` + `Left`    |
-| Right half   | `Alt` + `Right`   |
+| Left half    | `Alt` + `Q`       |
+| Right half   | `Alt` + `W`       |
 | Top-left     | `Alt` + `U`       |
 | Top-right    | `Alt` + `I`       |
 | Bottom-left  | `Alt` + `J`       |
@@ -40,8 +40,10 @@ it never reaches the focused application.
   `Ctrl`, `Shift`, `Win`, or `Alt + Ctrl`). The same modifier is shared by every action.
 - **Per-action key**: each action gets its own key (arrows, letters `A`-`Z`, or
   digits `0`-`9`).
-- **Gaps**: optional space (in pixels) between snapped windows and each screen edge
-  (top, bottom, left, right). All default to `0`, so windows sit flush by default.
+- **Gaps**: optional space (in pixels) applied to each side of the snapped window
+  (top, bottom, left, right), whether that side touches a screen edge or an inner
+  divider. All default to `0`, so windows sit flush by default. Note that two adjacent
+  windows are therefore separated by the sum of their facing gaps.
 
 The modifier combination must match exactly: if you choose `Alt`, then `Ctrl+Alt+Left`
 will *not* trigger the action.
@@ -64,7 +66,7 @@ will *not* trigger the action.
     - win_alt: Win + Alt
     - win_ctrl: Win + Ctrl
     - win_shift: Win + Shift
-- keyLeftHalf: left
+- keyLeftHalf: q
   $name: Left half key
   $options:
     - left: Left arrow
@@ -107,7 +109,7 @@ will *not* trigger the action.
     - "7": "7"
     - "8": "8"
     - "9": "9"
-- keyRightHalf: right
+- keyRightHalf: w
   $name: Right half key
   $options:
     - left: Left arrow
@@ -324,16 +326,16 @@ will *not* trigger the action.
     - "9": "9"
 - gapTop: 0
   $name: Top gap (pixels)
-  $description: Space left between the window and the top edge of the screen.
+  $description: Space left above the window, even when it borders another window.
 - gapBottom: 0
   $name: Bottom gap (pixels)
-  $description: Space left between the window and the bottom edge of the screen.
+  $description: Space left below the window, even when it borders another window.
 - gapLeft: 0
   $name: Left gap (pixels)
-  $description: Space left between the window and the left edge of the screen.
+  $description: Space left to the left of the window, even when it borders another window.
 - gapRight: 0
   $name: Right gap (pixels)
-  $description: Space left between the window and the right edge of the screen.
+  $description: Space left to the right of the window, even when it borders another window.
 */
 // ==/WindhawkModSettings==
 
@@ -521,68 +523,49 @@ static void SnapWindow(HWND hWnd, Action action) {
         return;
     }
 
-    // Work area inset by the configured per-edge gaps.
-    RECT area = mi.rcWork;
-    area.left += g_gapLeft;
-    area.top += g_gapTop;
-    area.right -= g_gapRight;
-    area.bottom -= g_gapBottom;
-    if (area.right <= area.left || area.bottom <= area.top) {
-        return;
-    }
+    const RECT& work = mi.rcWork;
+    const int midX = work.left + (work.right - work.left) / 2;
+    const int midY = work.top + (work.bottom - work.top) / 2;
 
-    const int fullWidth = area.right - area.left;
-    const int fullHeight = area.bottom - area.top;
-    const int halfWidth = fullWidth / 2;
-    const int halfHeight = fullHeight / 2;
-    const int rightX = area.left + (fullWidth - halfWidth);
-    const int bottomY = area.top + (fullHeight - halfHeight);
-
-    int x = area.left;
-    int y = area.top;
-    int w = halfWidth;
-    int h = fullHeight;
-
+    // The region of the work area this action targets, before gaps.
+    RECT cell = work;
     switch (action) {
         case Action::LeftHalf:
-            x = area.left;
-            y = area.top;
-            w = halfWidth;
-            h = fullHeight;
+            cell = {work.left, work.top, midX, work.bottom};
             break;
         case Action::RightHalf:
-            x = rightX;
-            y = area.top;
-            w = halfWidth;
-            h = fullHeight;
+            cell = {midX, work.top, work.right, work.bottom};
             break;
         case Action::TopLeft:
-            x = area.left;
-            y = area.top;
-            w = halfWidth;
-            h = halfHeight;
+            cell = {work.left, work.top, midX, midY};
             break;
         case Action::TopRight:
-            x = rightX;
-            y = area.top;
-            w = halfWidth;
-            h = halfHeight;
+            cell = {midX, work.top, work.right, midY};
             break;
         case Action::BottomLeft:
-            x = area.left;
-            y = bottomY;
-            w = halfWidth;
-            h = halfHeight;
+            cell = {work.left, midY, midX, work.bottom};
             break;
         case Action::BottomRight:
-            x = rightX;
-            y = bottomY;
-            w = halfWidth;
-            h = halfHeight;
+            cell = {midX, midY, work.right, work.bottom};
             break;
         case Action::None:
             return;
     }
+
+    // Inset every side of the window by its configured gap, regardless of
+    // whether that side touches a screen edge or an inner divider.
+    cell.left += g_gapLeft;
+    cell.top += g_gapTop;
+    cell.right -= g_gapRight;
+    cell.bottom -= g_gapBottom;
+    if (cell.right <= cell.left || cell.bottom <= cell.top) {
+        return;
+    }
+
+    const int x = cell.left;
+    const int y = cell.top;
+    const int w = cell.right - cell.left;
+    const int h = cell.bottom - cell.top;
 
     // GetWindowRect/SetWindowPos coordinates include the invisible drop-shadow
     // border that DWM draws around the window. Measure the real visible bounds
