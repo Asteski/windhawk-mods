@@ -1,6 +1,6 @@
 // ==WindhawkMod==
-// @id              asteski-rectangle
-// @name            Rectangle
+// @id              window-manager
+// @name            Window Manager
 // @description     Move the active window to screen halves and corners with keyboard shortcuts (inspired by Rectangle on macOS)
 // @version         1.0
 // @author          Asteski
@@ -11,7 +11,7 @@
 
 // ==WindhawkModReadme==
 /*
-# Rectangle
+# Window Manager
 
 Move the active window to specific screen areas using keyboard shortcuts, just like
 the [Rectangle](https://rectangleapp.com/) app on macOS.
