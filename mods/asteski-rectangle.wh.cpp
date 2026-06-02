@@ -71,10 +71,13 @@ that key is swallowed system-wide and can no longer be typed normally.
 ## Other configuration
 
 - **Gaps**: optional space (in pixels) applied to each side of the snapped window
-  (top, bottom, left, right). All default to `0`, so windows sit flush by default. By
-  default the gap is applied to every side; enable **Only gap screen edges** to apply
-  gaps solely where a window side touches a screen edge (adjacent windows then meet
-  flush in the middle).
+  (top, bottom, left, right). All default to `0`, so windows sit flush by default.
+- **Gap distribution**: controls how the gap is shared between adjacent windows.
+  *Even spacing* (default) puts the full gap on sides touching a screen edge and half the
+  gap on shared edges, so two windows placed side by side show the same gap between them
+  as a single window shows against the screen edge — no doubling. *Full gap on every side*
+  applies the whole gap to each side (adjacent windows then show a doubled gap). *Screen
+  edges only* gaps just the sides that touch a screen edge, so adjacent windows meet flush.
 - **Center size**: optional width/height (in pixels) for the Center action. Leave either
   empty to keep the window's current width or height.
 
@@ -101,84 +104,96 @@ by the Minimize action.
 
 // ==WindhawkModSettings==
 /*
-- modifier: alt
-  $name: Modifier key
-  $description: >-
-    Added to every action's shortcut, on top of any modifiers typed into the action
-    itself. Choose None to use only the modifiers written in each shortcut.
-  $options:
-    - none: None
-    - alt: Alt
-    - ctrl: Ctrl
-    - shift: Shift
-    - win: Win
-    - alt_ctrl: Alt + Ctrl
-    - alt_shift: Alt + Shift
-    - ctrl_shift: Ctrl + Shift
-    - win_alt: Win + Alt
-    - win_ctrl: Win + Ctrl
-    - win_shift: Win + Shift
-- keyLeftHalf: q
-  $name: Left half shortcut
-  $description: >-
-    Shortcut text, e.g. "q", "ctrl+q", or "ctrl+shift+left". The Modifier key above is
-    added on top. Leave empty to unbind. Same format for every action below.
-- keyRightHalf: w
-  $name: Right half shortcut
-- keyTopHalf: e
-  $name: Top half shortcut
-- keyBottomHalf: r
-  $name: Bottom half shortcut
-- keyCenterHalf: t
-  $name: Center half shortcut
-  $description: A half-width strip in the middle of the screen (full height).
-- keyTopLeft: u
-  $name: Top-left shortcut
-- keyTopRight: i
-  $name: Top-right shortcut
-- keyBottomLeft: j
-  $name: Bottom-left shortcut
-- keyBottomRight: k
-  $name: Bottom-right shortcut
-- keyMaximize: h
-  $name: Maximize shortcut
-  $description: Fills the whole work area, ignoring any configured gaps.
-- keyAlmostMaximize: y
-  $name: Almost-maximize shortcut
-  $description: Fills the work area but keeps the configured gaps.
-- keyCenter: g
-  $name: Center shortcut
-  $description: Centers the window without changing its size (unless a size is set below).
-- keyMinimize: m
-  $name: Minimize shortcut
-  $description: Minimizes the active window.
-- keyRestore: z
-  $name: Restore shortcut
-  $description: Returns the window to where it was before the first snap.
-- gapTop: 0
-  $name: Top gap (pixels)
-  $description: Space left above the window, even when it borders another window.
-- gapBottom: 0
-  $name: Bottom gap (pixels)
-  $description: Space left below the window, even when it borders another window.
-- gapLeft: 0
-  $name: Left gap (pixels)
-  $description: Space left to the left of the window, even when it borders another window.
-- gapRight: 0
-  $name: Right gap (pixels)
-  $description: Space left to the right of the window, even when it borders another window.
-- screenEdgeGapsOnly: false
-  $name: Only gap screen edges
-  $description: >-
-    When enabled, gaps are only applied to window sides that touch a screen edge,
-    so adjacent windows meet flush in the middle. When disabled, every side of every
-    window is gapped.
-- centerWidth: ""
-  $name: Center action width (pixels)
-  $description: Width to use for the Center action. Leave empty to keep the window's current width.
-- centerHeight: ""
-  $name: Center action height (pixels)
-  $description: Height to use for the Center action. Leave empty to keep the window's current height.
+- shortcuts:
+    - modifier: alt
+      $name: Modifier key
+      $description: >-
+        Added to every action's shortcut, on top of any modifiers typed into the action
+        itself. Choose None to use only the modifiers written in each shortcut.
+      $options:
+        - none: None
+        - alt: Alt
+        - ctrl: Ctrl
+        - shift: Shift
+        - win: Win
+        - alt_ctrl: Alt + Ctrl
+        - alt_shift: Alt + Shift
+        - ctrl_shift: Ctrl + Shift
+        - win_alt: Win + Alt
+        - win_ctrl: Win + Ctrl
+        - win_shift: Win + Shift
+    - keyLeftHalf: q
+      $name: Left half shortcut
+      $description: >-
+        Shortcut text, e.g. "q", "ctrl+q", or "ctrl+shift+left". The Modifier key above is
+        added on top. Leave empty to unbind. Same format for every action below.
+    - keyRightHalf: w
+      $name: Right half shortcut
+    - keyTopHalf: e
+      $name: Top half shortcut
+    - keyBottomHalf: r
+      $name: Bottom half shortcut
+    - keyCenterHalf: t
+      $name: Center half shortcut
+      $description: A half-width strip in the middle of the screen (full height).
+    - keyTopLeft: u
+      $name: Top-left shortcut
+    - keyTopRight: i
+      $name: Top-right shortcut
+    - keyBottomLeft: j
+      $name: Bottom-left shortcut
+    - keyBottomRight: k
+      $name: Bottom-right shortcut
+    - keyMaximize: h
+      $name: Maximize shortcut
+      $description: Fills the whole work area, ignoring any configured gaps.
+    - keyAlmostMaximize: y
+      $name: Almost-maximize shortcut
+      $description: Fills the work area but keeps the configured gaps.
+    - keyCenter: g
+      $name: Center shortcut
+      $description: Centers the window without changing its size (unless a size is set below).
+    - keyMinimize: m
+      $name: Minimize shortcut
+      $description: Minimizes the active window.
+    - keyRestore: z
+      $name: Restore shortcut
+      $description: Returns the window to where it was before the first snap.
+  $name: Shortcuts
+  $description: Keyboard shortcuts for each window action.
+- dimensions:
+    - gapTop: 0
+      $name: Top gap (pixels)
+      $description: Space left above a snapped window.
+    - gapBottom: 0
+      $name: Bottom gap (pixels)
+      $description: Space left below a snapped window.
+    - gapLeft: 0
+      $name: Left gap (pixels)
+      $description: Space left to the left of a snapped window.
+    - gapRight: 0
+      $name: Right gap (pixels)
+      $description: Space left to the right of a snapped window.
+    - gapMode: even
+      $name: Gap distribution
+      $description: >-
+        How gaps are applied between adjacent windows. "Even spacing" halves the gap on
+        shared edges so two windows side by side show the same gap as a single window
+        against the screen edge (no doubling). "Full gap on every side" applies the whole
+        gap to each window side, so adjacent windows show a doubled gap. "Screen edges
+        only" gaps just the sides that touch a screen edge, so adjacent windows meet flush.
+      $options:
+        - even: Even spacing (no doubling)
+        - full: Full gap on every side
+        - screen: Screen edges only
+    - centerWidth: ""
+      $name: Center action width (pixels)
+      $description: Width to use for the Center action. Leave empty to keep the window's current width.
+    - centerHeight: ""
+      $name: Center action height (pixels)
+      $description: Height to use for the Center action. Leave empty to keep the window's current height.
+  $name: Dimensions
+  $description: Gaps around snapped windows and sizes for the Center action.
 - rules:
     - - executable_names: ""
         $name: Executable name(s)
@@ -263,8 +278,14 @@ static int g_gapBottom = 0;
 static int g_gapLeft = 0;
 static int g_gapRight = 0;
 
-// When true, a gap is only applied to a window side that touches a screen edge.
-static bool g_screenEdgeGapsOnly = false;
+// How the gap on a window side is sized depending on whether that side touches a
+// screen edge (outer) or borders another tiled window (inner divider):
+//   Even   - outer sides get the full gap, inner sides get half, so two adjacent
+//            windows show the same total gap as a single window at the edge.
+//   Full   - every side gets the full gap (adjacent windows show a doubled gap).
+//   Screen - only sides touching a screen edge get a gap; inner sides get none.
+enum class GapMode { Even, Full, Screen };
+static GapMode g_gapMode = GapMode::Even;
 
 // Target size for the Center action; 0 means keep the window's current size.
 static int g_centerWidth = 0;
@@ -790,22 +811,28 @@ static void SnapWindow(HWND hWnd, Action action, bool noResize) {
             return;
     }
 
-    // Inset each side by its gap. Maximize ignores gaps entirely. In
-    // screen-edge-only mode a gap is applied only when that side coincides with
-    // the work-area edge; otherwise every side (including inner dividers) is inset.
+    // Inset each side by its gap. Maximize ignores gaps entirely. Inner sides
+    // (those not coinciding with the work-area edge) are sized per the gap mode:
+    // full gap (doubles between windows), half gap (even spacing), or none.
     if (action != Action::Maximize) {
-        if (!g_screenEdgeGapsOnly || cell.left == work.left) {
-            cell.left += g_gapLeft;
-        }
-        if (!g_screenEdgeGapsOnly || cell.top == work.top) {
-            cell.top += g_gapTop;
-        }
-        if (!g_screenEdgeGapsOnly || cell.right == work.right) {
-            cell.right -= g_gapRight;
-        }
-        if (!g_screenEdgeGapsOnly || cell.bottom == work.bottom) {
-            cell.bottom -= g_gapBottom;
-        }
+        auto sideGap = [](bool atScreenEdge, int gap) -> int {
+            if (atScreenEdge) {
+                return gap;
+            }
+            switch (g_gapMode) {
+                case GapMode::Even:
+                    return gap / 2;
+                case GapMode::Screen:
+                    return 0;
+                case GapMode::Full:
+                default:
+                    return gap;
+            }
+        };
+        cell.left += sideGap(cell.left == work.left, g_gapLeft);
+        cell.top += sideGap(cell.top == work.top, g_gapTop);
+        cell.right -= sideGap(cell.right == work.right, g_gapRight);
+        cell.bottom -= sideGap(cell.bottom == work.bottom, g_gapBottom);
     }
     if (cell.right <= cell.left || cell.bottom <= cell.top) {
         return;
@@ -942,36 +969,50 @@ static void ApplyRulesToExistingWindows() {
 }
 
 static void LoadSettings() {
-    PCWSTR modifier = Wh_GetStringSetting(L"modifier");
+    PCWSTR modifier = Wh_GetStringSetting(L"shortcuts.modifier");
     g_modifierMask = ParseModifierMask(modifier ? modifier : L"alt");
     if (modifier) {
         Wh_FreeStringSetting(modifier);
     }
 
-    g_gapTop = Wh_GetIntSetting(L"gapTop");
-    g_gapBottom = Wh_GetIntSetting(L"gapBottom");
-    g_gapLeft = Wh_GetIntSetting(L"gapLeft");
-    g_gapRight = Wh_GetIntSetting(L"gapRight");
-    g_screenEdgeGapsOnly = Wh_GetIntSetting(L"screenEdgeGapsOnly") != 0;
+    g_gapTop = Wh_GetIntSetting(L"dimensions.gapTop");
+    g_gapBottom = Wh_GetIntSetting(L"dimensions.gapBottom");
+    g_gapLeft = Wh_GetIntSetting(L"dimensions.gapLeft");
+    g_gapRight = Wh_GetIntSetting(L"dimensions.gapRight");
 
-    PCWSTR centerWidth = Wh_GetStringSetting(L"centerWidth");
+    PCWSTR gapMode = Wh_GetStringSetting(L"dimensions.gapMode");
+    std::wstring gapModeValue = gapMode ? gapMode : L"even";
+    if (gapMode) {
+        Wh_FreeStringSetting(gapMode);
+    }
+    if (gapModeValue == L"full") {
+        g_gapMode = GapMode::Full;
+    } else if (gapModeValue == L"screen") {
+        g_gapMode = GapMode::Screen;
+    } else {
+        g_gapMode = GapMode::Even;
+    }
+
+    PCWSTR centerWidth = Wh_GetStringSetting(L"dimensions.centerWidth");
     g_centerWidth = centerWidth ? _wtoi(centerWidth) : 0;
     if (centerWidth) {
         Wh_FreeStringSetting(centerWidth);
     }
 
-    PCWSTR centerHeight = Wh_GetStringSetting(L"centerHeight");
+    PCWSTR centerHeight = Wh_GetStringSetting(L"dimensions.centerHeight");
     g_centerHeight = centerHeight ? _wtoi(centerHeight) : 0;
     if (centerHeight) {
         Wh_FreeStringSetting(centerHeight);
     }
 
     static const PCWSTR keyNames[ACTION_COUNT] = {
-        L"keyLeftHalf",    L"keyRightHalf",     L"keyTopHalf",
-        L"keyBottomHalf",  L"keyCenterHalf",    L"keyTopLeft",
-        L"keyTopRight",    L"keyBottomLeft",    L"keyBottomRight",
-        L"keyMaximize",    L"keyAlmostMaximize", L"keyCenter",
-        L"keyMinimize",    L"keyRestore",
+        L"shortcuts.keyLeftHalf",   L"shortcuts.keyRightHalf",
+        L"shortcuts.keyTopHalf",    L"shortcuts.keyBottomHalf",
+        L"shortcuts.keyCenterHalf", L"shortcuts.keyTopLeft",
+        L"shortcuts.keyTopRight",   L"shortcuts.keyBottomLeft",
+        L"shortcuts.keyBottomRight", L"shortcuts.keyMaximize",
+        L"shortcuts.keyAlmostMaximize", L"shortcuts.keyCenter",
+        L"shortcuts.keyMinimize",   L"shortcuts.keyRestore",
     };
 
     for (int i = 0; i < ACTION_COUNT; i++) {
