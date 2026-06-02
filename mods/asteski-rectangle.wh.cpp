@@ -669,6 +669,16 @@ static std::wstring GetWindowProcessExeName(HWND hWnd) {
     return result;
 }
 
+// Bare lowercase executable name of the current (host) process.
+static std::wstring GetCurrentProcessExeName() {
+    wchar_t path[MAX_PATH] = {};
+    DWORD n = GetModuleFileNameW(nullptr, path, ARRAYSIZE(path));
+    if (n == 0) {
+        return L"";
+    }
+    return ToLower(BaseName(std::wstring(path, n)));
+}
+
 // Finds the action (and no-resize flag) for the first rule matching exeName.
 // Returns Action::None if no rule matches.
 static Action FindRuleAction(const std::wstring& exeName, bool* outNoResize) {
@@ -754,12 +764,24 @@ static void ApplyVisibleRect(HWND hWnd, int x, int y, int w, int h) {
         marginBottom = windowRect.bottom - frameRect.bottom;
     }
 
-    SetWindowPos(hWnd, nullptr,
-                 x - marginLeft,
-                 y - marginTop,
-                 w + marginLeft + marginRight,
-                 h + marginTop + marginBottom,
-                 SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE);
+    SetLastError(0);
+    BOOL ok = SetWindowPos(hWnd, nullptr,
+                           x - marginLeft,
+                           y - marginTop,
+                           w + marginLeft + marginRight,
+                           h + marginTop + marginBottom,
+                           SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE);
+    if (!ok) {
+        DWORD err = GetLastError();
+        if (err == ERROR_ACCESS_DENIED) {
+            Wh_Log(L"Window Manager: SetWindowPos was denied (error 5) for this "
+                   L"window. It almost certainly belongs to an elevated "
+                   L"(administrator) app while Windhawk is NOT elevated. Run "
+                   L"Windhawk as administrator to control it.");
+        } else {
+            Wh_Log(L"Window Manager: SetWindowPos failed, error=%lu", err);
+        }
+    }
 }
 
 // Current visible bounds of the window (excludes the invisible drop-shadow border).
@@ -1428,6 +1450,10 @@ static DWORD WINAPI HookThreadProc(LPVOID) {
 }
 
 BOOL Wh_ModInit() {
+    Wh_Log(L"Window Manager: host process '%s', elevated = %s",
+           GetCurrentProcessExeName().c_str(),
+           IsCurrentProcessElevated() ? L"yes" : L"no");
+
     LoadSettings();
 
     g_quit = false;
