@@ -32,6 +32,7 @@ the [Rectangle](https://rectangleapp.com/) app on macOS.
 | Maximize        | `Alt` + `H` |
 | Almost maximize | `Alt` + `Y` |
 | Center          | `Alt` + `G` |
+| Minimize        | `Alt` + `M` |
 | Restore         | `Alt` + `Z` |
 
 *Maximize* fills the work area ignoring gaps; *almost maximize* fills it while keeping
@@ -90,6 +91,11 @@ one field separated by `,`, `;`, or `|` (e.g. `notepad; calc.exe`). The availabl
 actions are the same region actions as the shortcuts (Maximize, halves, corners, etc.);
 *Restore* is intentionally not offered, since a freshly opened window has nothing to
 restore to.
+
+Enable a rule's **Don't resize** toggle to move the window into the chosen region while
+keeping its current size — the unresized window is anchored to the matching corner or
+side of the region (e.g. *top-right* pins it to the region's top-right). This is ignored
+by the Minimize action.
 */
 // ==/WindhawkModReadme==
 
@@ -143,6 +149,9 @@ restore to.
 - keyCenter: g
   $name: Center shortcut
   $description: Centers the window without changing its size (unless a size is set below).
+- keyMinimize: m
+  $name: Minimize shortcut
+  $description: Minimizes the active window.
 - keyRestore: z
   $name: Restore shortcut
   $description: Returns the window to where it was before the first snap.
@@ -192,6 +201,12 @@ restore to.
           - maximize: Maximize
           - almost-maximize: Almost maximize
           - center: Center
+          - minimize: Minimize
+      - no_resize: false
+        $name: Don't resize
+        $description: >-
+          Move the window into the chosen region but keep its current size
+          instead of resizing it to fill the region. Ignored by Minimize.
   $name: Auto-snap rules
   $description: >-
     Automatically apply an action to an app's windows when they open. Add one
@@ -228,6 +243,7 @@ enum class Action {
     Maximize,
     AlmostMaximize,
     Center,
+    Minimize,
     RestorePrevious,
 };
 
@@ -236,7 +252,7 @@ constexpr UINT MOD_F_CTRL = 0x2;
 constexpr UINT MOD_F_SHIFT = 0x4;
 constexpr UINT MOD_F_WIN = 0x8;
 
-constexpr int ACTION_COUNT = 13;
+constexpr int ACTION_COUNT = 14;
 
 // Mask of modifiers that must be held (and only those) for an action to fire.
 static UINT g_modifierMask = MOD_F_ALT;
@@ -263,7 +279,7 @@ static const Action g_actionByIndex[ACTION_COUNT] = {
     Action::BottomHalf,  Action::CenterHalf,    Action::TopLeft,
     Action::TopRight,    Action::BottomLeft,    Action::BottomRight,
     Action::Maximize,    Action::AlmostMaximize, Action::Center,
-    Action::RestorePrevious,
+    Action::Minimize,    Action::RestorePrevious,
 };
 
 // Window placement captured before the first snap, so RestorePrevious can revert.
@@ -275,6 +291,7 @@ static std::unordered_map<HWND, WINDOWPLACEMENT> g_savedPlacements;
 struct AppRule {
     std::vector<std::wstring> executables;
     Action action = Action::None;
+    bool noResize = false;  // Move the window into the region but keep its size.
 };
 static std::vector<AppRule> g_appRules;
 static std::mutex g_appRulesMutex;
@@ -295,6 +312,7 @@ static HANDLE g_hookReadyEvent = nullptr;
 struct WorkItem {
     HWND hWnd;
     Action action;
+    bool noResize;
 };
 static std::deque<WorkItem> g_workQueue;
 static std::mutex g_workQueueMutex;
@@ -303,13 +321,13 @@ static HANDLE g_workerThread = nullptr;
 static HANDLE g_workEvent = nullptr;
 static std::atomic<bool> g_quit{false};
 
-static void EnqueueWork(HWND hWnd, Action action) {
+static void EnqueueWork(HWND hWnd, Action action, bool noResize = false) {
     if (!hWnd || action == Action::None) {
         return;
     }
     {
         std::lock_guard<std::mutex> lock(g_workQueueMutex);
-        g_workQueue.push_back({hWnd, action});
+        g_workQueue.push_back({hWnd, action, noResize});
     }
     SetEvent(g_workEvent);
 }
@@ -526,6 +544,7 @@ static Action ParseActionName(const std::wstring& value) {
     if (v == L"maximize") return Action::Maximize;
     if (v == L"almost-maximize") return Action::AlmostMaximize;
     if (v == L"center") return Action::Center;
+    if (v == L"minimize") return Action::Minimize;
     return Action::None;
 }
 
@@ -553,7 +572,10 @@ static std::wstring GetWindowProcessExeName(HWND hWnd) {
     return result;
 }
 
-static Action FindRuleAction(const std::wstring& exeName) {
+// Finds the action (and no-resize flag) for the first rule matching exeName.
+// Returns Action::None if no rule matches.
+static Action FindRuleAction(const std::wstring& exeName, bool* outNoResize) {
+    *outNoResize = false;
     if (exeName.empty()) {
         return Action::None;
     }
@@ -561,6 +583,7 @@ static Action FindRuleAction(const std::wstring& exeName) {
     for (const auto& rule : g_appRules) {
         for (const auto& exe : rule.executables) {
             if (exe == exeName) {
+                *outNoResize = rule.noResize;
                 return rule.action;
             }
         }
@@ -673,7 +696,7 @@ static void RestorePreviousPlacement(HWND hWnd) {
     g_savedPlacements.erase(it);
 }
 
-static void SnapWindow(HWND hWnd, Action action) {
+static void SnapWindow(HWND hWnd, Action action, bool noResize) {
     if (action == Action::None || !IsEligibleWindow(hWnd)) {
         return;
     }
@@ -686,7 +709,14 @@ static void SnapWindow(HWND hWnd, Action action) {
     // Remember where the window was before its first snap so it can be restored.
     SavePlacementIfNew(hWnd);
 
-    if (action == Action::Maximize) {
+    if (action == Action::Minimize) {
+        ShowWindow(hWnd, SW_MINIMIZE);
+        return;
+    }
+
+    // Maximize fills the work area; with "don't resize" it instead keeps its
+    // size and is centered in the work area (handled by the cell logic below).
+    if (action == Action::Maximize && !noResize) {
         ShowWindow(hWnd, SW_MAXIMIZE);
         return;
     }
@@ -712,8 +742,8 @@ static void SnapWindow(HWND hWnd, Action action) {
     if (action == Action::Center) {
         int curW = 0, curH = 0;
         GetVisibleSize(hWnd, &curW, &curH);
-        int w = g_centerWidth > 0 ? g_centerWidth : curW;
-        int h = g_centerHeight > 0 ? g_centerHeight : curH;
+        int w = (!noResize && g_centerWidth > 0) ? g_centerWidth : curW;
+        int h = (!noResize && g_centerHeight > 0) ? g_centerHeight : curH;
         int x = work.left + (fullWidth - w) / 2;
         int y = work.top + (fullHeight - h) / 2;
         ApplyVisibleRect(hWnd, x, y, w, h);
@@ -753,33 +783,76 @@ static void SnapWindow(HWND hWnd, Action action) {
             cell = {midX, midY, work.right, work.bottom};
             break;
         case Action::AlmostMaximize:
+        case Action::Maximize:  // Only reached with noResize; ignores gaps.
             cell = work;
             break;
         default:
             return;
     }
 
-    // Inset each side by its gap. In screen-edge-only mode a gap is applied only
-    // when that side coincides with the work-area edge; otherwise every side
-    // (including inner dividers) is inset.
-    if (!g_screenEdgeGapsOnly || cell.left == work.left) {
-        cell.left += g_gapLeft;
-    }
-    if (!g_screenEdgeGapsOnly || cell.top == work.top) {
-        cell.top += g_gapTop;
-    }
-    if (!g_screenEdgeGapsOnly || cell.right == work.right) {
-        cell.right -= g_gapRight;
-    }
-    if (!g_screenEdgeGapsOnly || cell.bottom == work.bottom) {
-        cell.bottom -= g_gapBottom;
+    // Inset each side by its gap. Maximize ignores gaps entirely. In
+    // screen-edge-only mode a gap is applied only when that side coincides with
+    // the work-area edge; otherwise every side (including inner dividers) is inset.
+    if (action != Action::Maximize) {
+        if (!g_screenEdgeGapsOnly || cell.left == work.left) {
+            cell.left += g_gapLeft;
+        }
+        if (!g_screenEdgeGapsOnly || cell.top == work.top) {
+            cell.top += g_gapTop;
+        }
+        if (!g_screenEdgeGapsOnly || cell.right == work.right) {
+            cell.right -= g_gapRight;
+        }
+        if (!g_screenEdgeGapsOnly || cell.bottom == work.bottom) {
+            cell.bottom -= g_gapBottom;
+        }
     }
     if (cell.right <= cell.left || cell.bottom <= cell.top) {
         return;
     }
 
-    ApplyVisibleRect(hWnd, cell.left, cell.top, cell.right - cell.left,
-                     cell.bottom - cell.top);
+    if (!noResize) {
+        ApplyVisibleRect(hWnd, cell.left, cell.top, cell.right - cell.left,
+                         cell.bottom - cell.top);
+        return;
+    }
+
+    // Keep the window's size and anchor it within the target cell. The anchor
+    // edge follows the action (e.g. top-right -> top and right edges of the
+    // cell), so the unresized window sits in the matching corner/side.
+    int w = 0, h = 0;
+    GetVisibleSize(hWnd, &w, &h);
+    const int cellW = cell.right - cell.left;
+    const int cellH = cell.bottom - cell.top;
+
+    int ax = 0, ay = 0;  // -1 = left/top, 0 = center, 1 = right/bottom.
+    switch (action) {
+        case Action::LeftHalf:   ax = -1; ay = 0;  break;
+        case Action::RightHalf:  ax = 1;  ay = 0;  break;
+        case Action::TopHalf:    ax = 0;  ay = -1; break;
+        case Action::BottomHalf: ax = 0;  ay = 1;  break;
+        case Action::TopLeft:    ax = -1; ay = -1; break;
+        case Action::TopRight:   ax = 1;  ay = -1; break;
+        case Action::BottomLeft: ax = -1; ay = 1;  break;
+        case Action::BottomRight:ax = 1;  ay = 1;  break;
+        default:                 ax = 0;  ay = 0;  break;  // CenterHalf, (Almost)Maximize.
+    }
+
+    int x = ax < 0 ? cell.left
+            : ax > 0 ? cell.right - w
+                     : cell.left + (cellW - w) / 2;
+    int y = ay < 0 ? cell.top
+            : ay > 0 ? cell.bottom - h
+                     : cell.top + (cellH - h) / 2;
+
+    if (x < work.left) {
+        x = work.left;
+    }
+    if (y < work.top) {
+        y = work.top;
+    }
+
+    ApplyVisibleRect(hWnd, x, y, w, h);
 }
 
 LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
@@ -817,7 +890,8 @@ static void TryApplyRuleToWindow(HWND hWnd) {
         }
     }
 
-    Action action = FindRuleAction(GetWindowProcessExeName(hWnd));
+    bool noResize = false;
+    Action action = FindRuleAction(GetWindowProcessExeName(hWnd), &noResize);
     if (action == Action::None) {
         return;
     }
@@ -829,7 +903,7 @@ static void TryApplyRuleToWindow(HWND hWnd) {
         }
     }
 
-    EnqueueWork(hWnd, action);
+    EnqueueWork(hWnd, action, noResize);
 }
 
 void CALLBACK WinEventProc(HWINEVENTHOOK, DWORD event, HWND hWnd, LONG idObject,
@@ -897,7 +971,7 @@ static void LoadSettings() {
         L"keyBottomHalf",  L"keyCenterHalf",    L"keyTopLeft",
         L"keyTopRight",    L"keyBottomLeft",    L"keyBottomRight",
         L"keyMaximize",    L"keyAlmostMaximize", L"keyCenter",
-        L"keyRestore",
+        L"keyMinimize",    L"keyRestore",
     };
 
     for (int i = 0; i < ACTION_COUNT; i++) {
@@ -957,6 +1031,9 @@ static void LoadSettings() {
             Wh_FreeStringSetting(pAction);
         }
 
+        swprintf_s(key, L"rules[%d].no_resize", i);
+        bool noResize = Wh_GetIntSetting(key) != 0;
+
         if (execNames.empty() && actionValue.empty()) {
             // Tolerate a small gap of blank entries before giving up.
             if (i >= (int)newRules.size() + 2) {
@@ -968,6 +1045,7 @@ static void LoadSettings() {
         AppRule rule;
         rule.executables = SplitExecutableList(execNames);
         rule.action = ParseActionName(actionValue);
+        rule.noResize = noResize;
         if (!rule.executables.empty() && rule.action != Action::None) {
             newRules.push_back(std::move(rule));
         }
@@ -997,7 +1075,7 @@ static DWORD WINAPI WorkerThreadProc(LPVOID) {
                 item = g_workQueue.front();
                 g_workQueue.pop_front();
             }
-            SnapWindow(item.hWnd, item.action);
+            SnapWindow(item.hWnd, item.action, item.noResize);
         }
 
         if (g_quit.load()) {
