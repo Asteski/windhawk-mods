@@ -5,11 +5,7 @@
 // @version         1.0
 // @author          Asteski
 // @github          https://github.com/Asteski
-<<<<<<< HEAD
 // @include         dwm.exe
-=======
-// @include         windhawk.exe
->>>>>>> 7440ae8dd1f5a3ba54df34631edf86c610ee06a8
 // @compilerOptions -luser32 -ldwmapi
 // ==/WindhawkMod==
 
@@ -61,9 +57,9 @@ reaches the focused application.
 
 Each action's shortcut is free text in the form `[modifier+]...key`, for example:
 
-- `q` — just the `Q` key
-- `ctrl+q` — `Ctrl` + `Q`
-- `ctrl+shift+left` — `Ctrl` + `Shift` + `Left arrow`
+- `q` ÔÇö just the `Q` key
+- `ctrl+q` ÔÇö `Ctrl` + `Q`
+- `ctrl+shift+left` ÔÇö `Ctrl` + `Shift` + `Left arrow`
 
 Recognised modifier words are `alt`, `ctrl`, `shift`, and `win`; the key may be a letter
 `a`-`z`, a digit `0`-`9`, an arrow `left`/`right`/`up`/`down`, or one of the punctuation
@@ -72,7 +68,7 @@ the separator, the `=`/`+` key must be written as `plus` (or `=`).
 
 The **Modifier key** setting adds a modifier (or two) on top of whatever you type for
 every action. So with Modifier = `Alt` and Left half = `q`, the shortcut is `Alt+Q`. Set
-Modifier = `None` to use only the modifiers written in each shortcut — letting you give
+Modifier = `None` to use only the modifiers written in each shortcut ÔÇö letting you give
 different actions different modifiers (e.g. `q`, `ctrl+w`, `ctrl+shift+e`).
 
 The modifier combination must match exactly: an action bound to `Alt+Q` will *not* fire
@@ -86,7 +82,7 @@ that key is swallowed system-wide and can no longer be typed normally.
 - **Gap distribution**: controls how the gap is shared between adjacent windows.
   *Even spacing* (default) puts the full gap on sides touching a screen edge and half the
   gap on shared edges, so two windows placed side by side show the same gap between them
-  as a single window shows against the screen edge — no doubling. *Full gap on every side*
+  as a single window shows against the screen edge ÔÇö no doubling. *Full gap on every side*
   applies the whole gap to each side (adjacent windows then show a doubled gap). *Screen
   edges only* gaps just the sides that touch a screen edge, so adjacent windows meet flush.
 - **Center size**: optional width/height (in pixels) for the Center action. Leave either
@@ -107,7 +103,7 @@ actions are the same region actions as the shortcuts (Maximize, halves, corners,
 restore to.
 
 Enable a rule's **Don't resize** toggle to move the window into the chosen region while
-keeping its current size — the unresized window is anchored to the matching corner or
+keeping its current size ÔÇö the unresized window is anchored to the matching corner or
 side of the region (e.g. *top-right* pins it to the region's top-right). This is ignored
 by the Minimize action.
 */
@@ -1355,11 +1351,7 @@ static DWORD WINAPI HookThreadProc(LPVOID) {
 
     // Out-of-context window-event hook used to auto-snap matching apps. Events
     // are delivered to this thread's message queue, so it must be installed
-<<<<<<< HEAD
     // here. WINEVENT_SKIPOWNPROCESS keeps dwm.exe's own windows untouched.
-=======
-    // here. WINEVENT_SKIPOWNPROCESS keeps windhawk.exe's own windows untouched.
->>>>>>> 7440ae8dd1f5a3ba54df34631edf86c610ee06a8
     g_winEventHook = SetWinEventHook(
         EVENT_OBJECT_DESTROY, EVENT_OBJECT_SHOW, nullptr, WinEventProc, 0, 0,
         WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
