@@ -1,14 +1,14 @@
 // ==WindhawkMod==
 // @id              icon-resource-redirect-fork
 // @name            Resource Redirect - Fork
-// @description     Define alternative files for loading various resources (e.g. icons in imageres.dll) for simple theming without having to modify system files
-// @version         1.2.5
+// @description     Define alternative files for loading various resources (e.g. icons in imageres.dll) for simple theming without having to modify system files, with optional separate light/dark icon themes that follow the Windows theme
+// @version         1.3.0
 // @author          m417z
 // @github          https://github.com/m417z
 // @twitter         https://twitter.com/m417z
 // @homepage        https://m417z.com/
 // @include         *
-// @compilerOptions -lcomctl32 -lgdi32 -lole32 -loleaut32
+// @compilerOptions -lcomctl32 -lgdi32 -lole32 -loleaut32 -ladvapi32
 // ==/WindhawkMod==
 
 // Source code is published under The GNU General Public License v3.0.
@@ -41,6 +41,19 @@ repository.
 
 A short demonstration can be found [here on
 YouTube](https://youtu.be/irzVmKHB83E).
+
+## Light and dark themes
+
+The mod can follow the Windows app theme (light/dark) automatically. In addition
+to the regular **Icon theme** and **Theme paths** (used in light mode, and as the
+default), you can set a separate **Icon theme (dark mode)** and **Theme paths
+(dark mode)**. When Windows is in dark mode and a dark option is configured, it
+is used instead; otherwise the regular (light) option is used.
+
+The switch happens automatically when you toggle the Windows app theme - no need
+to reopen the mod's settings. Note that some already-cached icons may only update
+after the icon cache is cleared (you can trigger this by changing the icon theme
+in the settings, which offers to clear the cache).
 
 ## Theme paths
 
@@ -280,11 +293,189 @@ The resource lookup order then becomes:
   - Windows 11 New Folders Slate|themes/icons/niivu/Windows%2011%20New%20Folders%20Slate.zip: Windows 11 New Folders Slate (by niivu)
   - Windows 11 New Folders Yellow|themes/icons/niivu/Windows%2011%20New%20Folders%20Yellow.zip: Windows 11 New Folders Yellow (by niivu)
   - Pane7|themes/icons/ImSwordQueen/Pane7.zip: Pane7 (by ImSwordQueen)
+- iconThemeDark: ""
+  $name: Icon theme (dark mode)
+  $description: >-
+    The icon theme to use when Windows is in dark mode. If left as "None",
+    the light-mode "Icon theme" above is used in both modes.
+  $options:
+  - "": None
+  - All White Icons|themes/icons/niivu/All%20White%20Icons.zip: All White Icons (by niivu)
+  - Antu alt|themes/icons/niivu/antu%20alt.zip: Antu alt (by niivu)
+  - Antu|themes/icons/niivu/antu.zip: Antu (by niivu)
+  - Kuyen Alt|themes/icons/niivu/kuyen%20alt.zip: Kuyen Alt (by niivu)
+  - Kuyen|themes/icons/niivu/kuyen.zip: Kuyen (by niivu)
+  - ARC Symbolic|themes/icons/niivu/ARC%20Symbolic.zip: ARC Symbolic (by niivu)
+  - ARC|themes/icons/niivu/ARC.zip: ARC (by niivu)
+  - Arc Neutral Brown|themes/icons/niivu/arc-neutral%20brown.zip: Arc Neutral Brown (by niivu)
+  - Arc Neutral Grey|themes/icons/niivu/arc-neutral%20grey.zip: Arc Neutral Grey (by niivu)
+  - BananaOneUI|themes/icons/niivu/BANAANA%20OneUI.zip: BananaOneUI (by niivu)
+  - Big Sur DarkMode|themes/icons/niivu/Big%20Sur%20DarkMode.zip: Big Sur DarkMode (by niivu)
+  - Big Sur LightMode|themes/icons/niivu/Big%20Sur%20LightMode.zip: Big Sur LightMode (by niivu)
+  - Blanked DarkMode|themes/icons/niivu/blanked%20dark%20mode.zip: Blanked DarkMode (by niivu)
+  - Blanked LightMode|themes/icons/niivu/blanked%20light%20mode.zip: Blanked LightMode (by niivu)
+  - Bonny|themes/icons/niivu/bonny%20by%20niivu.zip: Bonny (by niivu)
+  - Bouquet|themes/icons/niivu/bouquet.zip: Bouquet (by niivu)
+  - Buuf|themes/icons/niivu/buuf.zip: Buuf (by niivu)
+  - CakeOS 2.0|themes/icons/niivu/cakeOS%202.0.zip: CakeOS 2.0 (by niivu)
+  - CakeOS Blue|themes/icons/niivu/Cake%20OS%20Blue.zip: CakeOS Blue (by niivu)
+  - CakeOS Green|themes/icons/niivu/Cake%20OS%20Green.zip: CakeOS Green (by niivu)
+  - CakeOS Orange|themes/icons/niivu/Cake%20OS%20Orange.zip: CakeOS Orange (by niivu)
+  - CakeOS Purple|themes/icons/niivu/Cake%20OS%20Purple.zip: CakeOS Purple (by niivu)
+  - CakeOS Red|themes/icons/niivu/Cake%20OS%20Red.zip: CakeOS Red (by niivu)
+  - Candy Original|themes/icons/niivu/candy%20original%20folders.zip: Candy Original (by niivu)
+  - Candy Outlined|themes/icons/niivu/candy%20outlined%20folders.zip: Candy Outlined (by niivu)
+  - Catppuccin|themes/icons/niivu/Catppuccin.zip: Catppuccin (by niivu)
+  - Catppuccin Blue|themes/icons/niivu/Catppuccin%20blue.zip: Catppuccin Blue (by niivu)
+  - Catppuccin Flamingo|themes/icons/niivu/Catppuccin%20flamingo.zip: Catppuccin Flamingo (by niivu)
+  - Catppuccin Green|themes/icons/niivu/Catppuccin%20green.zip: Catppuccin Green (by niivu)
+  - Catppuccin Latte|themes/icons/niivu/Catppuccin%20Latte.zip: Catppuccin Latte (by niivu)
+  - Catppuccin Lavender|themes/icons/niivu/Catppuccin%20lavender.zip: Catppuccin Lavender (by niivu)
+  - Catppuccin Maroon|themes/icons/niivu/Catppuccin%20maroon.zip: Catppuccin Maroon (by niivu)
+  - Catppuccin Mauve|themes/icons/niivu/Catppuccin%20mauve.zip: Catppuccin Mauve (by niivu)
+  - Catppuccin Mocha|themes/icons/niivu/Catppuccin%20Mocha.zip: Catppuccin Mocha (by niivu)
+  - Catppuccin Peach|themes/icons/niivu/Catppuccin%20peach.zip: Catppuccin Peach (by niivu)
+  - Catppuccin Pink|themes/icons/niivu/Catppuccin%20pink.zip: Catppuccin Pink (by niivu)
+  - Catppuccin Red|themes/icons/niivu/Catppuccin%20red.zip: Catppuccin Red (by niivu)
+  - Catppuccin Sky|themes/icons/niivu/Catppuccin%20sky.zip: Catppuccin Sky (by niivu)
+  - Catppuccin Teal|themes/icons/niivu/Catppuccin%20teal.zip: Catppuccin Teal (by niivu)
+  - Catppuccin Yellow|themes/icons/niivu/Catppuccin%20yellow.zip: Catppuccin Yellow (by niivu)
+  - Deepin Blue DarkMode|themes/icons/niivu/Deepin%20Blue%20-%20for%20dark%20themes.zip: Deepin Blue DarkMode (by niivu)
+  - Deepin Blue LightMode|themes/icons/niivu/Deepin%20Blue%20-%20for%20light%20themes.zip: Deepin Blue LightMode (by niivu)
+  - Deepin Brown DarkMode|themes/icons/niivu/Deepin%20Brown%20-%20for%20dark%20themes.zip: Deepin Brown DarkMode (by niivu)
+  - Deepin Brown LightMode|themes/icons/niivu/Deepin%20Brown%20-%20for%20light%20themes.zip: Deepin Brown LightMode (by niivu)
+  - Deepin Green DarkMode|themes/icons/niivu/Deepin%20Green%20-%20for%20dark%20themes.zip: Deepin Green DarkMode (by niivu)
+  - Deepin Green LightMode|themes/icons/niivu/Deepin%20Green%20-%20for%20light%20themes.zip: Deepin Green LightMode (by niivu)
+  - Deepin Slate DarkMode|themes/icons/niivu/Deepin%20Slate%20-%20for%20dark%20themes.zip: Deepin Slate DarkMode (by niivu)
+  - Deepin Slate LightMode|themes/icons/niivu/Deepin%20Slate%20-%20for%20light%20themes.zip: Deepin Slate LightMode (by niivu)
+  - Deepo|themes/icons/niivu/Deepo%20Icon%20pack.zip: Deepo (by niivu)
+  - Tango|themes/icons/niivu/Tango.zip: Tango (by niivu)
+  - Tangerine|themes/icons/niivu/Tangerine.zip: Tangerine (by niivu)
+  - Gnome|themes/icons/niivu/Gnome.zip: Gnome (by niivu)
+  - Cheser|themes/icons/niivu/Cheser.zip: Cheser (by niivu)
+  - Gnome Brave|themes/icons/niivu/Gnome%20Brave.zip: Gnome Brave (by niivu)
+  - Gnome Human|themes/icons/niivu/Gnome%20Human.zip: Gnome Human (by niivu)
+  - Gnome Noble|themes/icons/niivu/Gnome%20Noble.zip: Gnome Noble (by niivu)
+  - Gnome Wine|themes/icons/niivu/Gnome%20Wine.zip: Gnome Wine (by niivu)
+  - Gnome Wise|themes/icons/niivu/Gnome%20Wise.zip: Gnome Wise (by niivu)
+  - Elementary|themes/icons/niivu/Elementary.zip: Elementary (by niivu)
+  - Elementary New|themes/icons/niivu/Elementary%20NEW.zip: Elementary New (by niivu)
+  - Humanity|themes/icons/niivu/Humanity.zip: Humanity (by niivu)
+  - Everblush|themes/icons/niivu/Everblush.zip: Everblush (by niivu)
+  - Everforest|themes/icons/niivu/everforest.zip: Everforest (by niivu)
+  - Everforest Blank|themes/icons/niivu/everforest%20blank.zip: Everforest Blank (by niivu)
+  - Eyecandy|themes/icons/niivu/Eyecandy.zip: Eyecandy (by niivu)
+  - Faba|themes/icons/niivu/FABA.zip: Faba (by niivu)
+  - Faba Symbolic|themes/icons/niivu/FABA%20Symbolic.zip: Faba Symbolic (by niivu)
+  - Slate|themes/icons/niivu/SLATE.zip: Slate (by niivu)
+  - Slate Symbolic|themes/icons/niivu/SLATE%20Symbolic.zip: Slate Symbolic (by niivu)
+  - Fetch|themes/icons/niivu/Fetch.zip: Fetch (by niivu)
+  - Fluent|themes/icons/niivu/Fluent.zip: Fluent (by niivu)
+  - Fluent Keys Night|themes/icons/niivu/Fluent%20Keys%20Night.zip: Fluent Keys Night (by niivu)
+  - Fluent Keys Day|themes/icons/niivu/Fluent%20Keys%20Day.zip: Fluent Keys Day (by niivu)
+  - Flurry|themes/icons/niivu/FLURRY.zip: Flurry (by niivu)
+  - Gruvbox|themes/icons/niivu/Gruvbox.zip: Gruvbox (by niivu)
+  - Gruvbox Plus Olive|themes/icons/niivu/gruvbox%20plus%20-%20Olive.zip: Gruvbox Plus Olive (by niivu)
+  - Gruvbox Numix|themes/icons/niivu/Gruvbox%20numix.zip: Gruvbox Numix (by niivu)
+  - Haiku BeOS|themes/icons/niivu/Haiku%20BeOS.zip: Haiku BeOS (by niivu)
+  - Janguru Blue|themes/icons/niivu/janguru%20blue.zip: Janguru Blue (by niivu)
+  - Janguru BlueGrey|themes/icons/niivu/janguru%20bluegrey.zip: Janguru BlueGrey (by niivu)
+  - Janguru Brown|themes/icons/niivu/janguru%20brown.zip: Janguru Brown (by niivu)
+  - Janguru Green|themes/icons/niivu/janguru%20green.zip: Janguru Green (by niivu)
+  - Janguru Grey|themes/icons/niivu/janguru%20grey.zip: Janguru Grey (by niivu)
+  - Janguru Orange|themes/icons/niivu/janguru%20orange.zip: Janguru Orange (by niivu)
+  - koZ|themes/icons/niivu/koZ.zip: koZ (by niivu)
+  - Kripton Flatery|themes/icons/niivu/Kripton%20Flatery.zip: Kripton Flatery (by niivu)
+  - Linuxfx 11 AIO|themes/icons/niivu/Linuxfx-11-AIO.zip: Linuxfx 11 AIO (by niivu)
+  - Linuxfx 11 Lite|themes/icons/niivu/Linuxfx-11-lite.zip: Linuxfx 11 Lite (by niivu)
+  - Lol|themes/icons/niivu/lol.zip: Lol (by niivu)
+  - Lumicons Folders|themes/icons/niivu/Lumicons%20Folders.zip: Lumicons Folders (by niivu)
+  - Lumicons Symbols|themes/icons/niivu/Lumicons%20Symbols.zip: Lumicons Symbols (by niivu)
+  - macOSx|themes/icons/niivu/mac%20osx.zip: macOSx (by niivu)
+  - macOS Regular|themes/icons/niivu/macOS%20Regular.zip: macOS Regular (by niivu)
+  - macOS Blue|themes/icons/niivu/macOS%20blue.zip: macOS Blue (by niivu)
+  - macOS Yellow|themes/icons/niivu/macOS%20Yellow%20Folders.zip: macOS Yellow (by niivu)
+  - macOS DarkMode|themes/icons/niivu/macOS%20Dark%20Mode.zip: macOS DarkMode (by niivu)
+  - macOS LightMode|themes/icons/niivu/macOS%20Light%20Mode.zip: macOS LightMode (by niivu)
+  - macPac DarkMode|themes/icons/niivu/macpac%20darkmode.zip: macPac DarkMode (by niivu)
+  - macPac LightMode|themes/icons/niivu/macpac%20lightmode.zip: macPac LightMode (by niivu)
+  - Mechanical|themes/icons/niivu/mechanical.zip: Mechanical (by niivu)
+  - Minium2|themes/icons/niivu/MINIUM2.zip: Minium2 (by niivu)
+  - Nord Papirus|themes/icons/niivu/Nord%20Papirus.zip: Nord Papirus (by niivu)
+  - Nord Papirus NovaGalactic|themes/icons/niivu/Nord-Papirus-Nova-galactic.zip: Nord Papirus NovaGalactic (by niivu)
+  - Numix|themes/icons/niivu/numix.zip: Numix (by niivu)
+  - Numix Blue|themes/icons/niivu/numix-remix-blue.zip: Numix Blue (by niivu)
+  - Numix Green|themes/icons/niivu/numix-remix-green.zip: Numix Green (by niivu)
+  - Numix macOS|themes/icons/niivu/numix-remix-macos.zip: Numix macOS (by niivu)
+  - Numix Slate|themes/icons/niivu/numix-remix-slate.zip: Numix Slate (by niivu)
+  - Numix Windows|themes/icons/niivu/numix-remix-windows.zip: Numix Windows (by niivu)
+  - NUX|themes/icons/niivu/NUX.zip: NUX (by niivu)
+  - One Dark Pro|themes/icons/niivu/One%20Dark%20Pro.zip: One Dark Pro (by niivu)
+  - One Dark Pro Alt|themes/icons/niivu/One%20Dark%20Pro%20alt.zip: One Dark Pro Alt (by niivu)
+  - One UI4|themes/icons/niivu/OneUI4.zip: One UI4 (by niivu)
+  - OS X Minimalism|themes/icons/niivu/OS%20X%20Minimalism.zip: OS X Minimalism (by niivu)
+  - OS X Minimalism Symbolic|themes/icons/niivu/OS%20X%20Minimalism%20Symbolic.zip: OS X Minimalism Symbolic (by niivu)
+  - Paper|themes/icons/niivu/Paper.zip: Paper (by niivu)
+  - Papirus Black|themes/icons/niivu/Papirus%20Black.zip: Papirus Black (by niivu)
+  - Papirus BlueGrey|themes/icons/niivu/Papirus%20Blue%20Grey.zip: Papirus BlueGrey (by niivu)
+  - Papirus Blue|themes/icons/niivu/Papirus%20Blue.zip: Papirus Blue (by niivu)
+  - Papirus Brown|themes/icons/niivu/Papirus%20Brown.zip: Papirus Brown (by niivu)
+  - Papirus Deep Orange|themes/icons/niivu/Papirus%20Deep%20Orange.zip: Papirus Deep Orange (by niivu)
+  - Papirus Dracula|themes/icons/niivu/Papirus%20Dracula.zip: Papirus Dracula (by niivu)
+  - Papirus Grey|themes/icons/niivu/Papirus%20Grey.zip: Papirus Grey (by niivu)
+  - Papirus Magenta|themes/icons/niivu/Papirus%20Magenta.zip: Papirus Magenta (by niivu)
+  - Papirus Pink|themes/icons/niivu/Papirus%20Pink.zip: Papirus Pink (by niivu)
+  - Papirus Red|themes/icons/niivu/Papirus%20Red.zip: Papirus Red (by niivu)
+  - Papirus Solarized|themes/icons/niivu/Papirus%20Solarized.zip: Papirus Solarized (by niivu)
+  - Papirus Teal|themes/icons/niivu/Papirus%20Teal.zip: Papirus Teal (by niivu)
+  - Papirus Violet|themes/icons/niivu/Papirus%20Violet.zip: Papirus Violet (by niivu)
+  - Tokyo Night|themes/icons/niivu/Tokyo%20Night%20blank.zip: Tokyo Night (by niivu)
+  - Tokyo Night Papirus|themes/icons/niivu/Tokyo%20Night%20Papirus.zip: Tokyo Night Papirus (by niivu)
+  - Tokyo Night SE Papirus|themes/icons/niivu/Tokyo%20Night%20SE%20Papirus.zip: Tokyo Night SE Papirus (by niivu)
+  - Pink Folders|themes/icons/niivu/pink%20folders.zip: Pink Folders (by niivu)
+  - Post|themes/icons/niivu/post.zip: Post (by niivu)
+  - Pure Dark|themes/icons/niivu/Pure%20for%20dark%20or%20dark%20side%20panel%20themes.zip: Pure Dark (by niivu)
+  - Pure Light|themes/icons/niivu/Pure%20for%20light%20themes.zip: Pure Light (by niivu)
+  - Quixotic Day|themes/icons/niivu/Quixotic-SE%20Day%20AIO.zip: Quixotic Day (by niivu)
+  - Quixotic Dark|themes/icons/niivu/Quixotic-SE%20Dark%20AIO.zip: Quixotic Dark (by niivu)
+  - Quixotic Night|themes/icons/niivu/Quixotic-SE%20Night%20AIO.zip: Quixotic Night (by niivu)
+  - Rose Pine|themes/icons/niivu/Rose%20Pine.zip: Rose Pine (by niivu)
+  - Solarized Day AIO|themes/icons/niivu/solarized%20Day%20AIO.zip: Solarized Day AIO (by niivu)
+  - Solarized Night AIO|themes/icons/niivu/solarized%20Night%20AIO.zip: Solarized Night AIO (by niivu)
+  - Solus|themes/icons/niivu/Solus.zip: Solus (by niivu)
+  - Somatic Rebirth|themes/icons/niivu/Somatic%20Rebirth.zip: Somatic Rebirth (by niivu)
+  - Spaceshrooms Blue|themes/icons/niivu/space-shrooms-blue.zip: Spaceshrooms Blue (by niivu)
+  - Spaceshrooms Green|themes/icons/niivu/space-shrooms-green.zip: Spaceshrooms Green (by niivu)
+  - Spaceshrooms Yellow|themes/icons/niivu/space-shrooms-yellow.zip: Spaceshrooms Yellow (by niivu)
+  - Super Remix Blue|themes/icons/niivu/Super%20Remix%20Blue.zip: Super Remix Blue (by niivu)
+  - Super Remix Green|themes/icons/niivu/Super%20Remix%20Green.zip: Super Remix Green (by niivu)
+  - Super Remix Slate|themes/icons/niivu/Super%20Remix%20Slate.zip: Super Remix Slate (by niivu)
+  - Sweet Awesomeness|themes/icons/niivu/Sweet%20Awesomeness.zip: Sweet Awesomeness (by niivu)
+  - Sweetness Blue|themes/icons/niivu/Sweetness%20Blue%20folders.zip: Sweetness Blue (by niivu)
+  - Sweetness Neutral|themes/icons/niivu/Sweetness%20Neutral.zip: Sweetness Neutral (by niivu)
+  - Sweetness Original|themes/icons/niivu/Sweetness%20Original.zip: Sweetness Original (by niivu)
+  - Sweetness Pink|themes/icons/niivu/Sweetness%20Pink%20folders.zip: Sweetness Pink (by niivu)
+  - Sweetness Purple|themes/icons/niivu/Sweetness%20Purple%20folders.zip: Sweetness Purple (by niivu)
+  - Sweet Rainbow|themes/icons/niivu/Sweet-Rainbow.zip: Sweet Rainbow (by niivu)
+  - UOS|themes/icons/niivu/Uos%20Icon%20pack.zip: UOS (by niivu)
+  - Windows 11 New (default)|themes/icons/niivu/Windows%2011%20New%20%28default%29.zip: Windows 11 New (default) (by niivu)
+  - Windows 11 New Folders Blue|themes/icons/niivu/Windows%2011%20New%20Folders%20Blue.zip: Windows 11 New Folders Blue (by niivu)
+  - Windows 11 New Folders Green|themes/icons/niivu/Windows%2011%20New%20Folders%20Green.zip: Windows 11 New Folders Green (by niivu)
+  - Windows 11 New Folders Purple|themes/icons/niivu/Windows%2011%20New%20Folders%20Purple.zip: Windows 11 New Folders Purple (by niivu)
+  - Windows 11 New Folders Slate|themes/icons/niivu/Windows%2011%20New%20Folders%20Slate.zip: Windows 11 New Folders Slate (by niivu)
+  - Windows 11 New Folders Yellow|themes/icons/niivu/Windows%2011%20New%20Folders%20Yellow.zip: Windows 11 New Folders Yellow (by niivu)
+  - Pane7|themes/icons/ImSwordQueen/Pane7.zip: Pane7 (by ImSwordQueen)
 - themePaths: [""]
   $name: Theme paths
   $description: >-
     Each path can be a folder with alternative resource files and the theme.ini
     file, or the .ini theme file itself.
+- themePathsDark: [""]
+  $name: Theme paths (dark mode)
+  $description: >-
+    Like "Theme paths", but used when Windows is in dark mode. If no
+    dark-mode path is set, the light-mode "Theme paths" are used in both
+    modes.
 - redirectionResourcePaths:
   - - original: ""
       $name: The redirected resource file
@@ -359,6 +550,16 @@ std::atomic<DWORD> g_operationCounter;
 
 HANDLE g_clearCachePromptThread;
 std::atomic<HWND> g_clearCachePromptWindow;
+
+// Windows app theme (light/dark) awareness. The redirection that's active
+// depends on the current theme; a background thread watches the relevant
+// registry key and re-applies the configuration when the theme is toggled.
+constexpr WCHAR kPersonalizeKey[] =
+    L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize";
+std::atomic<bool> g_lastDarkMode;
+std::mutex g_settingsReloadMutex;
+HANDLE g_themeWatcherThread;
+HANDLE g_themeWatcherStopEvent;
 
 // The resource operation count is used to mark recognized high level resource
 // operations, which will then be checked in the lower level hooks:
@@ -2553,8 +2754,32 @@ std::wstring GetIconThemePath(std::wstring_view iconTheme) {
     return targetPath;
 }
 
+// Returns true if Windows is using the dark app theme (the same setting that
+// controls Explorer, the taskbar, etc.). Defaults to light on any failure.
+bool IsAppsDarkModeEnabled() {
+    DWORD value = 1;  // 1 = light, 0 = dark.
+    DWORD size = sizeof(value);
+    if (RegGetValue(HKEY_CURRENT_USER, kPersonalizeKey, L"AppsUseLightTheme",
+                    RRF_RT_REG_DWORD, nullptr, &value, &size) != ERROR_SUCCESS) {
+        return false;
+    }
+
+    return value == 0;
+}
+
 void LoadSettings() {
-    g_settings.iconTheme = WindhawkUtils::StringSetting::make(L"iconTheme");
+    bool darkMode = IsAppsDarkModeEnabled();
+    g_lastDarkMode = darkMode;
+    Wh_Log(L"Loading settings for %s mode", darkMode ? L"dark" : L"light");
+
+    // Pick the icon theme for the current Windows theme, falling back to the
+    // light/default theme when no dark theme is configured.
+    auto iconThemeLight = WindhawkUtils::StringSetting::make(L"iconTheme");
+    auto iconThemeDark = WindhawkUtils::StringSetting::make(L"iconThemeDark");
+    g_settings.iconTheme = (darkMode && *iconThemeDark)
+                               ? std::move(iconThemeDark)
+                               : std::move(iconThemeLight);
+
     g_settings.allResourceRedirect = Wh_GetIntSetting(L"allResourceRedirect");
 
     std::unordered_map<std::wstring, std::vector<std::wstring>> paths;
@@ -2664,8 +2889,20 @@ void LoadSettings() {
         }
     }
 
+    // In dark mode, use the dark theme paths if any are configured; otherwise
+    // fall back to the light/default theme paths.
+    PCWSTR themePathsKey = L"themePaths[%d]";
+    if (darkMode) {
+        PCWSTR firstDarkPath = Wh_GetStringSetting(L"themePathsDark[%d]", 0);
+        bool hasDarkPaths = *firstDarkPath;
+        Wh_FreeStringSetting(firstDarkPath);
+        if (hasDarkPaths) {
+            themePathsKey = L"themePathsDark[%d]";
+        }
+    }
+
     for (int i = 0;; i++) {
-        PCWSTR themePath = Wh_GetStringSetting(L"themePaths[%d]", i);
+        PCWSTR themePath = Wh_GetStringSetting(themePathsKey, i);
         bool hasThemePath = *themePath;
         if (hasThemePath) {
             try {
@@ -2725,6 +2962,66 @@ void LoadSettings() {
     g_redirectionResourcePathsA = std::move(pathsA);
     g_redirectionResourcePathPatterns = std::move(pathPatterns);
     g_redirectionResourcePathPatternsA = std::move(pathPatternsA);
+}
+
+// Re-applies the configuration for the current Windows theme. Called when the
+// theme is toggled while the mod is loaded.
+void ReapplyForCurrentTheme() {
+    std::lock_guard<std::mutex> guard(g_settingsReloadMutex);
+
+    LoadSettings();
+    FreeAndClearRedirectedModules();
+
+    if (DoesCurrentProcessOwnTaskbar()) {
+        // Let other processes some time to load the new config.
+        Sleep(400);
+
+        // Invalidate icon cache so the new icons are picked up.
+        SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, nullptr, nullptr);
+    }
+}
+
+// Watches the Personalize registry key and re-applies the configuration
+// whenever the light/dark app theme is toggled. The key also changes for
+// unrelated tweaks (e.g. accent color), so the actual light/dark state is
+// compared before doing any work.
+DWORD WINAPI ThemeChangeWatcherThread(LPVOID) {
+    HKEY hKey;
+    if (RegOpenKeyEx(HKEY_CURRENT_USER, kPersonalizeKey, 0,
+                     KEY_NOTIFY | KEY_QUERY_VALUE, &hKey) != ERROR_SUCCESS) {
+        Wh_Log(L"Failed to open Personalize key for theme watching");
+        return 0;
+    }
+
+    HANDLE regEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+    if (!regEvent) {
+        RegCloseKey(hKey);
+        return 0;
+    }
+
+    while (true) {
+        if (RegNotifyChangeKeyValue(hKey, FALSE, REG_NOTIFY_CHANGE_LAST_SET,
+                                    regEvent, TRUE) != ERROR_SUCCESS) {
+            break;
+        }
+
+        HANDLE handles[2] = {g_themeWatcherStopEvent, regEvent};
+        DWORD wait = WaitForMultipleObjects(2, handles, FALSE, INFINITE);
+        if (wait != WAIT_OBJECT_0 + 1) {
+            // Stop requested (or the wait failed): exit the watcher.
+            break;
+        }
+
+        bool darkNow = IsAppsDarkModeEnabled();
+        if (darkNow != g_lastDarkMode.load()) {
+            Wh_Log(L"Windows theme changed, re-applying (dark=%d)", darkNow);
+            ReapplyForCurrentTheme();
+        }
+    }
+
+    CloseHandle(regEvent);
+    RegCloseKey(hKey);
+    return 0;
 }
 
 BOOL Wh_ModInit() {
@@ -2893,11 +3190,39 @@ BOOL Wh_ModInit() {
         Wh_Log(L"Couldn't load dui70.dll");
     }
 
+    // Start watching for Windows light/dark theme changes so the redirection
+    // can follow the theme automatically.
+    g_themeWatcherStopEvent = CreateEvent(nullptr, TRUE, FALSE, nullptr);
+    if (g_themeWatcherStopEvent) {
+        g_themeWatcherThread =
+            CreateThread(nullptr, 0, ThemeChangeWatcherThread, nullptr, 0,
+                         nullptr);
+        if (!g_themeWatcherThread) {
+            CloseHandle(g_themeWatcherStopEvent);
+            g_themeWatcherStopEvent = nullptr;
+        }
+    }
+
     return TRUE;
 }
 
 void Wh_ModUninit() {
     Wh_Log(L">");
+
+    if (g_themeWatcherStopEvent) {
+        SetEvent(g_themeWatcherStopEvent);
+    }
+
+    if (g_themeWatcherThread) {
+        WaitForSingleObject(g_themeWatcherThread, INFINITE);
+        CloseHandle(g_themeWatcherThread);
+        g_themeWatcherThread = nullptr;
+    }
+
+    if (g_themeWatcherStopEvent) {
+        CloseHandle(g_themeWatcherStopEvent);
+        g_themeWatcherStopEvent = nullptr;
+    }
 
     FreeAndClearRedirectedModules();
 
@@ -2923,6 +3248,10 @@ void Wh_ModUninit() {
 
 BOOL Wh_ModSettingsChanged(BOOL* bReload) {
     Wh_Log(L">");
+
+    // Serialize with the theme-change watcher thread, which also reloads
+    // settings and frees redirected modules.
+    std::lock_guard<std::mutex> guard(g_settingsReloadMutex);
 
     auto prevIconTheme = std::move(g_settings.iconTheme);
     int prevAllResourceRedirect = g_settings.allResourceRedirect;
