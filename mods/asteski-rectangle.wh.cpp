@@ -5,7 +5,7 @@
 // @version         1.0
 // @author          Asteski
 // @github          https://github.com/Asteski
-// @include         winlogon.exe
+// @include         windhawk.exe
 // @compilerOptions -luser32 -ldwmapi
 // ==/WindhawkMod==
 
@@ -1351,7 +1351,7 @@ static DWORD WINAPI HookThreadProc(LPVOID) {
 
     // Out-of-context window-event hook used to auto-snap matching apps. Events
     // are delivered to this thread's message queue, so it must be installed
-    // here. WINEVENT_SKIPOWNPROCESS keeps winlogon.exe's own windows untouched.
+    // here. WINEVENT_SKIPOWNPROCESS keeps windhawk.exe's own windows untouched.
     g_winEventHook = SetWinEventHook(
         EVENT_OBJECT_DESTROY, EVENT_OBJECT_SHOW, nullptr, WinEventProc, 0, 0,
         WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
