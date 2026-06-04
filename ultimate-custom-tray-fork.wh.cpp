@@ -3,7 +3,7 @@
 // @name            Ultimate Custom Tray - Fork
 // @description     This mod adds customizable system tray icons in Windows with configurable actions and context menus, support for image files and application icons, and automatic adaptation to the system theme.
 // @description:ru-RU   Этот мод добавляет настраиваемые иконки в системный трей Windows с возможностью назначения действий и контекстных меню, поддержкой файлов изображений и иконок приложений, а также автоматической адаптацией под тему системы.
-// @version         2.1
+// @version         2.2
 // @author          Salyts
 // @license         MIT
 // @github          https://github.com/Salyts
@@ -13,7 +13,7 @@
 
 // ==WindhawkModReadme==
 /*
-# Ultimate Custom Tray 2.1
+# Ultimate Custom Tray 2.2
 
 This mod adds customizable system tray icons in Windows with configurable actions and context menus, support for image files and application icons, and automatic adaptation to the system theme.
 
@@ -41,6 +41,7 @@ This mod adds customizable system tray icons in Windows with configurable action
 | `press:` | `press:Win+E` or `press:0x5B;0x45` | Keyboard key press using a [Win32 key code](https://learn.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes). |
 | `web:` | `web:https://windhawk.net/` | Opens a URL in the default browser. |
 | `ms-settings:` | `ms-settings:bluetooth` | Opens a Windows Settings page. |
+| `menu:` | `menu:` | Opens the item's context menu. Can be assigned to any click. |
 
 ### Modifier signs (prepend to any action)
 
@@ -116,9 +117,13 @@ Each item in the **Tray Items** list becomes a separate icon in the system tray.
 
 - **Label** - Tooltip text shown when hovering over the tray icon.
 - **Icon** - The icon to display. Can be a glyph code (e.g., "EC50"), image file path, or executable path.
-- **Action** - Command or action to execute when the icon is left-clicked (or right-clicked if buttons are swapped).
-- **Swap mouse buttons** - When enabled, left-click opens the context menu and right-click runs the action.
-- **Context menu** - List of menu items shown on right-click (or left-click if buttons are swapped).
+- **Left click action** - Action to execute on left click.
+- **Right click action** - Action to execute on right click. Defaults to `menu:` (opens the context menu).
+- **Middle click action** - Action to execute on middle (wheel) click. Empty by default.
+- **Scroll up action** / **Scroll down action** - Action to execute when scrolling the mouse wheel up or down over the icon. Empty by default.
+- **Context menu** - List of menu items. Shown for any click whose action is set to `menu:`.
+
+Every click action accepts the same formats as the table above. Use `menu:` to open the context menu, or leave an action empty to do nothing. For example, to swap the classic behavior set the left click action to `menu:` and the right click action to your command.
 
 ### Context Menu Items
 
@@ -181,10 +186,20 @@ Each context menu item has the following settings:
       - icon: "EC50"
         $name: Icon
       - action: "cmd:explorer"
-        $name: Action
-      - swap_buttons: false
-        $name: Swap mouse buttons
-        $description: "When enabled, left-click opens context menu and right-click runs action."
+        $name: Left click action
+        $description: "Action on left click. Use 'menu:' to open the context menu."
+      - right_action: "menu:"
+        $name: Right click action
+        $description: "Action on right click. Use 'menu:' to open the context menu. Leave empty to do nothing."
+      - middle_action: ""
+        $name: Middle click action
+        $description: "Action on middle (wheel) click. Use 'menu:' to open the context menu. Leave empty to do nothing."
+      - scroll_up_action: ""
+        $name: Scroll up action
+        $description: "Action when scrolling the wheel up over the icon. Leave empty to do nothing."
+      - scroll_down_action: ""
+        $name: Scroll down action
+        $description: "Action when scrolling the wheel down over the icon. Leave empty to do nothing."
       - context_menu:
           - - state: "enabled"
               $name: State
@@ -251,7 +266,7 @@ Each context menu item has the following settings:
             - state: "enabled"
         $name: Context menu
   $name: Tray Items
-  $description: "Each item becomes a tray icon. Left-click runs Action, right-click opens Context menu."
+  $description: "Each item becomes a tray icon. Assign a separate action to left/right/middle click and wheel up/down. Use 'menu:' as an action to open the Context menu."
 */
 // ==/WindhawkModSettings==
 
@@ -280,13 +295,16 @@ struct ContextMenuItem {
 
 struct TrayItem {
     std::wstring label;
-    std::wstring action;
+    std::wstring action;            // left click
+    std::wstring rightAction;       // right click
+    std::wstring middleAction;      // middle click
+    std::wstring scrollUpAction;    // wheel up
+    std::wstring scrollDownAction;  // wheel down
     std::wstring iconRaw;
     HICON        hIcon      = nullptr;
     HICON        hIconLight = nullptr;
     HICON        hIconDark  = nullptr;
     GUID         guid       = {};
-    bool         swapButtons = false;
     std::vector<ContextMenuItem> contextMenu;
 };
 
@@ -297,8 +315,11 @@ static HWND                  g_trayHwnd        = nullptr;
 static const UINT            WM_TRAY_CB        = WM_USER + 100;
 static const UINT            WM_RELOAD         = WM_USER + 101;
 static const UINT            WM_THEME_CHANGED  = WM_USER + 102;
+static const UINT            WM_TRAY_SCROLL    = WM_USER + 103;
 static ULONG_PTR             g_gdiplusToken    = 0;
 static UINT                  WM_TASKBARCREATED = 0;
+static HHOOK                 g_mouseHook       = nullptr;
+static bool                  g_anyScrollActions = false;
 
 static std::wstring g_iconColorMode  = L"auto";
 static std::wstring g_menuColorMode  = L"auto";
@@ -1155,6 +1176,24 @@ static void ShowContextMenu(HWND hWnd, UINT itemId,
     }
 }
 
+// Routes a single click/scroll action: "menu:" (or "menu") opens the item's
+// context menu, an empty action does nothing, anything else runs as an action.
+static void DispatchItemAction(HWND hWnd, UINT itemId, const std::wstring& action) {
+    if (action.empty()) return;
+
+    if (StartsWithCI(action, L"menu:") || ToLower(action) == L"menu") {
+        std::vector<ContextMenuItem> menu;
+        {
+            std::lock_guard<std::mutex> lk(g_itemsMutex);
+            if (itemId < g_items.size()) menu = g_items[itemId].contextMenu;
+        }
+        ShowContextMenu(hWnd, itemId, menu);
+        return;
+    }
+
+    ExecuteAction(action);
+}
+
 static void AddAllTrayIcons() {
     std::lock_guard<std::mutex> lk(g_itemsMutex);
     for (size_t i = 0; i < g_items.size(); i++) {
@@ -1281,13 +1320,30 @@ static void LoadAllSettings() {
         std::wstring actionStr = pAction ? pAction : L"";
         if (pAction) Wh_FreeStringSetting(pAction);
 
+        swprintf_s(key, L"items[%d].right_action", i);
+        PCWSTR pRightAction = Wh_GetStringSetting(key);
+        std::wstring rightActionStr = pRightAction ? pRightAction : L"";
+        if (pRightAction) Wh_FreeStringSetting(pRightAction);
+
+        swprintf_s(key, L"items[%d].middle_action", i);
+        PCWSTR pMiddleAction = Wh_GetStringSetting(key);
+        std::wstring middleActionStr = pMiddleAction ? pMiddleAction : L"";
+        if (pMiddleAction) Wh_FreeStringSetting(pMiddleAction);
+
+        swprintf_s(key, L"items[%d].scroll_up_action", i);
+        PCWSTR pScrollUp = Wh_GetStringSetting(key);
+        std::wstring scrollUpStr = pScrollUp ? pScrollUp : L"";
+        if (pScrollUp) Wh_FreeStringSetting(pScrollUp);
+
+        swprintf_s(key, L"items[%d].scroll_down_action", i);
+        PCWSTR pScrollDown = Wh_GetStringSetting(key);
+        std::wstring scrollDownStr = pScrollDown ? pScrollDown : L"";
+        if (pScrollDown) Wh_FreeStringSetting(pScrollDown);
+
         swprintf_s(key, L"items[%d].icon", i);
         PCWSTR pIcon = Wh_GetStringSetting(key);
         std::wstring iconStr = pIcon ? pIcon : L"";
         if (pIcon) Wh_FreeStringSetting(pIcon);
-
-        swprintf_s(key, L"items[%d].swap_buttons", i);
-        bool swapButtons = Wh_GetIntSetting(key) != 0;
 
         bool allEmpty = labelStr.empty() && actionStr.empty() && iconStr.empty();
         if (allEmpty) {
@@ -1296,10 +1352,13 @@ static void LoadAllSettings() {
         }
 
         TrayItem item;
-        item.label   = labelStr.empty() ? L"Tray" : labelStr;
-        item.action  = actionStr;
-        item.iconRaw = iconStr.empty() ? L"E700" : iconStr;
-        item.swapButtons = swapButtons;
+        item.label            = labelStr.empty() ? L"Tray" : labelStr;
+        item.action           = actionStr;
+        item.rightAction      = rightActionStr;
+        item.middleAction     = middleActionStr;
+        item.scrollUpAction   = scrollUpStr;
+        item.scrollDownAction = scrollDownStr;
+        item.iconRaw          = iconStr.empty() ? L"E700" : iconStr;
 
         item.hIconLight = MakeIconVariant(item.iconRaw, 32, false);
         item.hIconDark  = MakeIconVariant(item.iconRaw, 32, true);
@@ -1349,9 +1408,18 @@ static void LoadAllSettings() {
         newItems.push_back(std::move(item));
     }
 
+    bool anyScroll = false;
+    for (const auto& it : newItems) {
+        if (!it.scrollUpAction.empty() || !it.scrollDownAction.empty()) {
+            anyScroll = true;
+            break;
+        }
+    }
+
     {
         std::lock_guard<std::mutex> lk(g_itemsMutex);
         g_items = std::move(newItems);
+        g_anyScrollActions = anyScroll;
     }
 }
 
@@ -1360,36 +1428,41 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         UINT id    = LOWORD(wParam);
         UINT event = (UINT)lParam;
 
-        bool swapped = false;
+        if (event != WM_LBUTTONUP && event != WM_RBUTTONUP &&
+            event != WM_MBUTTONUP)
+            return 0;
+
+        if (g_iconColorMode == L"auto")
+            RefreshTrayIconTheme();
+
+        std::wstring act;
         {
             std::lock_guard<std::mutex> lk(g_itemsMutex);
-            if (id < g_items.size()) swapped = g_items[id].swapButtons;
-        }
-
-        UINT actionEvent = swapped ? WM_RBUTTONUP : WM_LBUTTONUP;
-        UINT menuEvent   = swapped ? WM_LBUTTONUP : WM_RBUTTONUP;
-
-        if (event == actionEvent) {
-            if (g_iconColorMode == L"auto")
-                RefreshTrayIconTheme();
-
-            std::wstring act;
-            {
-                std::lock_guard<std::mutex> lk(g_itemsMutex);
-                if (id < g_items.size()) act = g_items[id].action;
+            if (id < g_items.size()) {
+                if      (event == WM_LBUTTONUP) act = g_items[id].action;
+                else if (event == WM_RBUTTONUP) act = g_items[id].rightAction;
+                else                            act = g_items[id].middleAction;
             }
-            ExecuteAction(act);
-        } else if (event == menuEvent) {
-            if (g_iconColorMode == L"auto")
-                RefreshTrayIconTheme();
-
-            std::vector<ContextMenuItem> menu;
-            {
-                std::lock_guard<std::mutex> lk(g_itemsMutex);
-                if (id < g_items.size()) menu = g_items[id].contextMenu;
-            }
-            ShowContextMenu(hWnd, id, menu);
         }
+        DispatchItemAction(hWnd, id, act);
+        return 0;
+    }
+
+    if (msg == WM_TRAY_SCROLL) {
+        UINT id  = (UINT)wParam;
+        bool up  = lParam != 0;
+
+        if (g_iconColorMode == L"auto")
+            RefreshTrayIconTheme();
+
+        std::wstring act;
+        {
+            std::lock_guard<std::mutex> lk(g_itemsMutex);
+            if (id < g_items.size())
+                act = up ? g_items[id].scrollUpAction
+                         : g_items[id].scrollDownAction;
+        }
+        DispatchItemAction(hWnd, id, act);
         return 0;
     }
 
@@ -1414,6 +1487,47 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     }
 
     return DefWindowProcW(hWnd, msg, wParam, lParam);
+}
+
+// The shell does not forward wheel events to tray-icon callbacks, so we use a
+// low-level mouse hook to detect scrolling over one of our icons.
+static LRESULT CALLBACK LowLevelMouseProc(int nCode, WPARAM wParam, LPARAM lParam) {
+    if (nCode == HC_ACTION && wParam == WM_MOUSEWHEEL && g_anyScrollActions &&
+        g_trayHwnd) {
+        MSLLHOOKSTRUCT* p = (MSLLHOOKSTRUCT*)lParam;
+        bool  up = (short)HIWORD(p->mouseData) > 0;
+        POINT pt = p->pt;
+
+        int hitId = -1;
+        {
+            std::lock_guard<std::mutex> lk(g_itemsMutex);
+            for (size_t i = 0; i < g_items.size(); i++) {
+                const std::wstring& act = up ? g_items[i].scrollUpAction
+                                             : g_items[i].scrollDownAction;
+                if (act.empty()) continue;
+
+                NOTIFYICONIDENTIFIER nii = {};
+                nii.cbSize   = sizeof(nii);
+                nii.hWnd     = g_trayHwnd;
+                nii.uID      = (UINT)i;
+                nii.guidItem = g_items[i].guid;
+
+                RECT r = {};
+                if (SUCCEEDED(Shell_NotifyIconGetRect(&nii, &r)) &&
+                    PtInRect(&r, pt)) {
+                    hitId = (int)i;
+                    break;
+                }
+            }
+        }
+
+        if (hitId >= 0) {
+            PostMessageW(g_trayHwnd, WM_TRAY_SCROLL, (WPARAM)hitId, up ? 1 : 0);
+            return 1;  // swallow so the window underneath doesn't also scroll
+        }
+    }
+
+    return CallNextHookEx(nullptr, nCode, wParam, lParam);
 }
 
 DWORD WINAPI TrayThread(LPVOID) {
@@ -1442,9 +1556,20 @@ DWORD WINAPI TrayThread(LPVOID) {
     LoadAllSettings();
     UpdateTrayIcons();
 
+    HMODULE hSelf = nullptr;
+    GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                           GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                       (LPCWSTR)&LowLevelMouseProc, &hSelf);
+    g_mouseHook = SetWindowsHookExW(WH_MOUSE_LL, LowLevelMouseProc, hSelf, 0);
+
     MSG m;
     while (GetMessageW(&m, nullptr, 0, 0))
         DispatchMessageW(&m);
+
+    if (g_mouseHook) {
+        UnhookWindowsHookEx(g_mouseHook);
+        g_mouseHook = nullptr;
+    }
 
     UpdateTrayIcons(true);
     DestroyAllIcons();
