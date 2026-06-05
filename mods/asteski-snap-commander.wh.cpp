@@ -60,9 +60,9 @@ modifier behind (no menu-bar or Start-menu flicker).
 
 Each action's shortcut is free text in the form `[modifier+]...key`, for example:
 
-- `q` — just the `Q` key
-- `ctrl+q` — `Ctrl` + `Q`
-- `ctrl+shift+left` — `Ctrl` + `Shift` + `Left arrow`
+- `q` - just the `Q` key
+- `ctrl+q` - `Ctrl` + `Q`
+- `ctrl+shift+left` - `Ctrl` + `Shift` + `Left arrow`
 
 Recognised modifier words are `alt`, `ctrl`, `shift`, and `win`; the key may be a letter
 `a`-`z`, a digit `0`-`9`, an arrow `left`/`right`/`up`/`down`, or one of the punctuation
@@ -71,7 +71,7 @@ the separator, the `=`/`+` key must be written as `plus` (or `=`).
 
 The **Modifier key** setting adds a modifier (or two) on top of whatever you type for
 every action. So with Modifier = `Alt` and Left half = `q`, the shortcut is `Alt+Q`. Set
-Modifier = `None` to use only the modifiers written in each shortcut — letting you give
+Modifier = `None` to use only the modifiers written in each shortcut - letting you give
 different actions different modifiers (e.g. `q`, `ctrl+w`, `ctrl+shift+e`).
 
 The modifier combination must match exactly: an action bound to `Alt+Q` will *not* fire
@@ -89,7 +89,7 @@ noted in the mod's log and the shortcut is simply skipped.
 - **Gap distribution**: controls how the gap is shared between adjacent windows.
   *Even spacing* (default) puts the full gap on sides touching a screen edge and half the
   gap on shared edges, so two windows placed side by side show the same gap between them
-  as a single window shows against the screen edge — no doubling. *Full gap on every side*
+  as a single window shows against the screen edge - no doubling. *Full gap on every side*
   applies the whole gap to each side (adjacent windows then show a doubled gap). *Screen
   edges only* gaps just the sides that touch a screen edge, so adjacent windows meet flush.
 - **Center size**: optional width/height (in pixels) for the Center action. Leave either
@@ -110,7 +110,7 @@ actions are the same region actions as the shortcuts (Maximize, halves, corners,
 restore to.
 
 Enable a rule's **Don't resize** toggle to move the window into the chosen region while
-keeping its current size — the unresized window is anchored to the matching corner or
+keeping its current size - the unresized window is anchored to the matching corner or
 side of the region (e.g. *top-right* pins it to the region's top-right). This is ignored
 by the Minimize action.
 */
