@@ -2,7 +2,7 @@
 // @id              custom-taskbar-toolbars
 // @name            Custom Taskbar Toolbars
 // @description     Restores the classic Windows taskbar toolbars with clickable buttons, text/icon display modes, and shell-style actions.
-// @version         1.0.0
+// @version         0.1.0
 // @author          Asteski
 // @include         explorer.exe
 // @compilerOptions -lruntimeobject -lversion -luuid -luser32 -lwindowsapp -lshell32 -lgdi32 -lshlwapi -lwindowscodecs -ldwmapi -lshcore -lksuser
