@@ -2,7 +2,7 @@
 // @id              custom-taskbar-toolbars
 // @name            Custom Taskbar Toolbars
 // @description     Restores the classic Windows taskbar toolbars with clickable buttons, text/icon display modes, and shell-style actions.
-// @version         0.1.0
+// @version         0.2.0
 // @author          Asteski
 // @include         explorer.exe
 // @compilerOptions -lruntimeobject -lversion -luuid -luser32 -lwindowsapp -lshell32 -lgdi32 -lshlwapi -lwindowscodecs -ldwmapi -lshcore -lksuser
@@ -100,6 +100,8 @@ The buttons can display text, icons, or both, and can be placed in various locat
     $name: Custom button width (px)
   - buttonSpacing: 4
     $name: Spacing between buttons
+  - iconLabelSpacing: 6
+    $name: Spacing between icon and label
   - buttonOffset: "0,0"
     $name: Button offset (horizontal,vertical)
   - buttonPadding: "8,0"
@@ -118,6 +120,14 @@ The buttons can display text, icons, or both, and can be placed in various locat
             $name: Icon
           - action: "cmd:explorer"
             $name: Action
+          - tooltip: "Open File Explorer"
+            $name: Tooltip
+          - state: "normal"
+            $name: State
+            $options:
+            - normal: Normal
+            - disabled: Disabled
+            - hidden: Hidden
           - displayMode: "default"
             $name: Display mode
             $options:
@@ -131,6 +141,14 @@ The buttons can display text, icons, or both, and can be placed in various locat
             $name: Icon
           - action: "ms-settings:"
             $name: Action
+          - tooltip: "Open Windows Settings"
+            $name: Tooltip
+          - state: "normal"
+            $name: State
+            $options:
+            - normal: Normal
+            - disabled: Disabled
+            - hidden: Hidden
           - displayMode: "default"
             $name: Display mode
             $options:
@@ -144,6 +162,14 @@ The buttons can display text, icons, or both, and can be placed in various locat
             $name: Icon
           - action: "winver"
             $name: Action
+          - tooltip: "Show Windows version"
+            $name: Tooltip
+          - state: "normal"
+            $name: State
+            $options:
+            - normal: Normal
+            - disabled: Disabled
+            - hidden: Hidden
           - displayMode: "icon"
             $name: Display mode
             $options:
@@ -207,6 +233,8 @@ struct MenuBarButton {
     std::wstring label;
     std::wstring iconRaw;
     std::wstring action;
+    std::wstring tooltip;
+    std::wstring state;
     std::wstring displayMode;
 };
 
@@ -219,6 +247,7 @@ struct Settings {
     std::wstring buttonWidthMode = L"dynamic";
     int          customButtonWidth = 80;
     int          buttonSpacing  = 8;
+    int          iconLabelSpacing = 6;
     int          buttonOffsetX  = 0;
     int          buttonOffsetY  = 0;
     int          buttonPaddingX  = 8;
@@ -599,6 +628,14 @@ static std::wstring ResolveDisplayMode(const MenuBarButton& item) {
     return g_settings.displayMode;
 }
 
+static bool IsButtonHidden(const MenuBarButton& item) {
+    return item.state == L"hidden";
+}
+
+static bool IsButtonDisabled(const MenuBarButton& item) {
+    return item.state == L"disabled";
+}
+
 static HorizontalAlignment ResolveButtonContentAlignment() {
     if (g_settings.buttonContentAlignment == L"left") return HorizontalAlignment::Left;
     if (g_settings.buttonContentAlignment == L"right") return HorizontalAlignment::Right;
@@ -648,7 +685,7 @@ static FrameworkElement MakeButtonContent(const MenuBarButton& item, const std::
             auto icon = MakeIconElement(item.iconRaw, (double)g_settings.iconSize);
             if (icon) {
                 if (auto fe = icon.try_as<FrameworkElement>()) {
-                    fe.Margin({0, 0, 6, 0});
+                    fe.Margin({0, 0, (double)g_settings.iconLabelSpacing, 0});
                 }
                 panel.Children().Append(icon);
             } else {
@@ -656,7 +693,7 @@ static FrameworkElement MakeButtonContent(const MenuBarButton& item, const std::
                 spacer.Name(L"TaskbarMenuBarButtonIcon");
                 spacer.Tag(box_value(hstring(L"TaskbarMenuBarButtonIcon")));
                 spacer.Text(L"");
-                spacer.Margin({0, 0, 6, 0});
+                spacer.Margin({0, 0, (double)g_settings.iconLabelSpacing, 0});
                 panel.Children().Append(spacer);
             }
 
@@ -1245,8 +1282,8 @@ static void UpdateButtonHighlightHeight() {
 
 static Grid BuildMenuBar() {
     Grid root;
-    root.Name(L"TaskbarMenuBarRoot");
-    root.Tag(box_value(hstring(L"TaskbarMenuBarRoot")));
+    root.Name(L"TaskbarMenuBarHost");
+    root.Tag(box_value(hstring(L"TaskbarMenuBarHost")));
     ApplyEmptyXamlStyle(root, L"Windows.UI.Xaml.Controls.Grid");
     root.VerticalAlignment(VerticalAlignment::Center);
     root.HorizontalAlignment(HorizontalAlignment::Left);
@@ -1264,6 +1301,7 @@ static Grid BuildMenuBar() {
     std::vector<MenuBarButton> visibleItems;
     visibleItems.reserve(items.size());
     for (const auto& item : items) {
+        if (IsButtonHidden(item)) continue;
         if (item.label.empty() && item.iconRaw.empty() && item.action.empty()) continue;
         visibleItems.push_back(item);
     }
@@ -1282,13 +1320,17 @@ static Grid BuildMenuBar() {
         btn.HorizontalAlignment(HorizontalAlignment::Center);
         btn.HorizontalContentAlignment(ResolveButtonContentAlignment());
         btn.MinWidth(GetButtonContentMinWidth());
+        if (IsButtonDisabled(item)) {
+            btn.IsEnabled(false);
+            btn.Opacity(0.55);
+        }
         btn.Padding({(double)g_settings.buttonPaddingX, (double)g_settings.buttonPaddingY,
                      (double)g_settings.buttonPaddingX, (double)g_settings.buttonPaddingY});
         ApplyTaskbarLikeButtonChrome(btn);
         btn.Click([action = item.action](auto const&, auto const&) {
             ExecuteAction(action);
         });
-        ToolTipService::SetToolTip(btn, box_value(item.label));
+        ToolTipService::SetToolTip(btn, box_value(item.tooltip.empty() ? item.label : item.tooltip));
 
         auto content = MakeButtonContent(item, ResolveDisplayMode(item));
         if (content) {
@@ -1940,8 +1982,8 @@ static bool InjectMenuBar() {
         g_insertedColumn = placement.insertColumn;
     } else {
         Canvas canvasHost;
-        canvasHost.Name(L"TaskbarMenuBarHost");
-        canvasHost.Tag(box_value(hstring(L"TaskbarMenuBarHost")));
+        canvasHost.Name(L"TaskbarMenuBarCanvasHost");
+        canvasHost.Tag(box_value(hstring(L"TaskbarMenuBarCanvasHost")));
         ApplyEmptyXamlStyle(canvasHost, L"Windows.UI.Xaml.Controls.Canvas");
         canvasHost.HorizontalAlignment(HorizontalAlignment::Stretch);
         canvasHost.VerticalAlignment(VerticalAlignment::Stretch);
@@ -2026,6 +2068,7 @@ static void LoadSettings() {
     }
     g_settings.customButtonWidth = GetIntSetting(L"MenuBarSettings.customButtonWidth", 1, 1024, 80);
     g_settings.buttonSpacing = GetIntSetting(L"MenuBarSettings.buttonSpacing", 0, 64, 8);
+    g_settings.iconLabelSpacing = GetIntSetting(L"MenuBarSettings.iconLabelSpacing", 0, 64, 6);
     g_settings.iconSize = GetIntSetting(L"MenuBarSettings.iconSize", 8, 48, 16);
     g_settings.textSize = GetIntSetting(L"MenuBarSettings.textSize", 8, 32, 13);
     g_settings.buttonPaddingX = 8;
@@ -2048,10 +2091,19 @@ static void LoadSettings() {
         swprintf_s(key, L"ButtonsSettings.buttons[%d].action", i);
         std::wstring action = GetStringSetting(key);
 
+        swprintf_s(key, L"ButtonsSettings.buttons[%d].tooltip", i);
+        std::wstring tooltip = GetStringSetting(key);
+
+        swprintf_s(key, L"ButtonsSettings.buttons[%d].state", i);
+        std::wstring state = GetStringSetting(key, L"normal");
+        if (state != L"normal" && state != L"disabled" && state != L"hidden") {
+            state = L"normal";
+        }
+
         swprintf_s(key, L"ButtonsSettings.buttons[%d].displayMode", i);
         std::wstring displayMode = GetStringSetting(key, L"default");
 
-        bool allEmpty = label.empty() && icon.empty() && action.empty();
+        bool allEmpty = label.empty() && icon.empty() && action.empty() && tooltip.empty();
         if (allEmpty) {
             if (i >= (int)newButtons.size() + 2) break;
             continue;
@@ -2061,6 +2113,8 @@ static void LoadSettings() {
         item.label = label.empty() ? L"Button" : label;
         item.iconRaw = icon;
         item.action = action;
+        item.tooltip = tooltip;
+        item.state = state;
         item.displayMode = displayMode.empty() ? L"default" : displayMode;
         newButtons.push_back(std::move(item));
     }
