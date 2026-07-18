@@ -175,6 +175,7 @@ The buttons can display text, icons, or both, and can be placed in various locat
 #include <winrt/Windows.UI.Xaml.h>
 #include <winrt/Windows.UI.Xaml.Controls.h>
 #include <winrt/Windows.UI.Xaml.Controls.Primitives.h>
+#include <winrt/Windows.UI.Xaml.Interop.h>
 #include <winrt/Windows.UI.Xaml.Markup.h>
 #include <winrt/Windows.UI.Xaml.Media.h>
 #include <winrt/Windows.UI.Xaml.Media.Imaging.h>
@@ -558,6 +559,8 @@ static Brush GetThemeBrush(const wchar_t* key) {
     return SolidColorBrush(Colors::Transparent());
 }
 
+static void ApplyEmptyXamlStyle(FrameworkElement const& element, const wchar_t* typeNameString);
+
 static FrameworkElement MakeGlyphIcon(const std::wstring& iconRaw, double size) {
     try {
         WCHAR glyph = 0xE700;
@@ -567,6 +570,8 @@ static FrameworkElement MakeGlyphIcon(const std::wstring& iconRaw, double size) 
         }
 
         TextBlock tb;
+        tb.Name(L"TaskbarMenuBarButtonIcon");
+        tb.Tag(box_value(hstring(L"TaskbarMenuBarButtonIcon")));
         tb.Text(hstring(std::wstring(1, glyph)));
         tb.FontFamily(FontFamily(L"Segoe Fluent Icons"));
         tb.FontSize(size);
@@ -635,6 +640,9 @@ static FrameworkElement MakeButtonContent(const MenuBarButton& item, const std::
     if (displayMode == L"both" && (showIcon || showText)) {
         if (hasIcon && hasText) {
             StackPanel panel;
+            panel.Name(L"TaskbarMenuBarButtonContent");
+            panel.Tag(box_value(hstring(L"TaskbarMenuBarButtonContent")));
+            ApplyEmptyXamlStyle(panel, L"Windows.UI.Xaml.Controls.StackPanel");
             panel.Orientation(Orientation::Horizontal);
 
             auto icon = MakeIconElement(item.iconRaw, (double)g_settings.iconSize);
@@ -645,12 +653,16 @@ static FrameworkElement MakeButtonContent(const MenuBarButton& item, const std::
                 panel.Children().Append(icon);
             } else {
                 TextBlock spacer;
+                spacer.Name(L"TaskbarMenuBarButtonIcon");
+                spacer.Tag(box_value(hstring(L"TaskbarMenuBarButtonIcon")));
                 spacer.Text(L"");
                 spacer.Margin({0, 0, 6, 0});
                 panel.Children().Append(spacer);
             }
 
             TextBlock text;
+            text.Name(L"TaskbarMenuBarButtonLabel");
+            text.Tag(box_value(hstring(L"TaskbarMenuBarButtonLabel")));
             text.Text(hstring(item.label));
             text.FontSize((double)g_settings.textSize);
             text.Foreground(GetTextBrush());
@@ -672,6 +684,8 @@ static FrameworkElement MakeButtonContent(const MenuBarButton& item, const std::
 
         if (hasText) {
             TextBlock text;
+            text.Name(L"TaskbarMenuBarButtonLabel");
+            text.Tag(box_value(hstring(L"TaskbarMenuBarButtonLabel")));
             text.Text(hstring(item.label));
             text.FontSize((double)g_settings.textSize);
             text.Foreground(GetTextBrush());
@@ -699,6 +713,8 @@ static FrameworkElement MakeButtonContent(const MenuBarButton& item, const std::
     }
 
     TextBlock text;
+    text.Name(L"TaskbarMenuBarButtonLabel");
+    text.Tag(box_value(hstring(L"TaskbarMenuBarButtonLabel")));
     text.Text(hstring(item.label.empty() ? L"Button" : item.label));
     text.FontSize((double)g_settings.textSize);
     text.Foreground(GetTextBrush());
@@ -715,8 +731,8 @@ static Style CreateTaskbarLikeButtonStyle() {
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
   <Style.Resources>
-    <SolidColorBrush x:Key="TaskbarMenuBarButtonHoverBorderBrush" Color="#26FFFFFF"/>
-    <SolidColorBrush x:Key="TaskbarMenuBarButtonPressedBorderBrush" Color="#1EFFFFFF"/>
+    <SolidColorBrush x:Key="TaskbarMenuBarButtonHighlightBorderBrush" Color="#FFE9E9E9"/>
+    <SolidColorBrush x:Key="TaskbarMenuBarButtonHighlightBottomBorderBrush" Color="#FFE0E0E0"/>
   </Style.Resources>
   <Setter Property="Background" Value="Transparent"/>
   <Setter Property="BorderBrush" Value="Transparent"/>
@@ -727,7 +743,11 @@ static Style CreateTaskbarLikeButtonStyle() {
   <Setter Property="Template">
     <Setter.Value>
       <ControlTemplate TargetType="Button">
-        <Grid x:Name="Root">
+        <Border x:Name="Root"
+                Background="{TemplateBinding Background}"
+                BorderBrush="{TemplateBinding BorderBrush}"
+                BorderThickness="{TemplateBinding BorderThickness}"
+                CornerRadius="{TemplateBinding CornerRadius}">
           <VisualStateManager.VisualStateGroups>
             <VisualStateGroup x:Name="CommonStates">
               <VisualState x:Name="Normal">
@@ -742,16 +762,26 @@ static Style CreateTaskbarLikeButtonStyle() {
                                    To="1"
                                    Duration="0:0:0.12"
                                    EnableDependentAnimation="True"/>
+                  <DoubleAnimation Storyboard.TargetName="BottomHighlightBorder"
+                                   Storyboard.TargetProperty="Opacity"
+                                   To="0"
+                                   Duration="0:0:0.08"
+                                   EnableDependentAnimation="True"/>
                 </Storyboard>
               </VisualState>
               <VisualState x:Name="PointerOver">
                 <Storyboard>
-                  <ObjectAnimationUsingKeyFrames Storyboard.TargetName="BackgroundBorder" Storyboard.TargetProperty="Background">
+                  <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="Background">
                     <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource ControlFillColorSecondaryBrush}"/>
                   </ObjectAnimationUsingKeyFrames>
-                  <ObjectAnimationUsingKeyFrames Storyboard.TargetName="BackgroundBorder" Storyboard.TargetProperty="BorderBrush">
-                    <DiscreteObjectKeyFrame KeyTime="0" Value="{StaticResource TaskbarMenuBarButtonHoverBorderBrush}"/>
+                  <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="BorderBrush">
+                    <DiscreteObjectKeyFrame KeyTime="0" Value="{StaticResource TaskbarMenuBarButtonHighlightBorderBrush}"/>
                   </ObjectAnimationUsingKeyFrames>
+                  <DoubleAnimation Storyboard.TargetName="BottomHighlightBorder"
+                                   Storyboard.TargetProperty="Opacity"
+                                   To="1"
+                                   Duration="0:0:0.08"
+                                   EnableDependentAnimation="True"/>
                   <DoubleAnimation Storyboard.TargetName="ContentPresenter"
                                    Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
                                    To="1"
@@ -766,12 +796,17 @@ static Style CreateTaskbarLikeButtonStyle() {
               </VisualState>
               <VisualState x:Name="Pressed">
                 <Storyboard>
-                  <ObjectAnimationUsingKeyFrames Storyboard.TargetName="BackgroundBorder" Storyboard.TargetProperty="Background">
+                  <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="Background">
                     <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource ControlFillColorTertiaryBrush}"/>
                   </ObjectAnimationUsingKeyFrames>
-                  <ObjectAnimationUsingKeyFrames Storyboard.TargetName="BackgroundBorder" Storyboard.TargetProperty="BorderBrush">
-                    <DiscreteObjectKeyFrame KeyTime="0" Value="{StaticResource TaskbarMenuBarButtonPressedBorderBrush}"/>
+                  <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="BorderBrush">
+                    <DiscreteObjectKeyFrame KeyTime="0" Value="{StaticResource TaskbarMenuBarButtonHighlightBorderBrush}"/>
                   </ObjectAnimationUsingKeyFrames>
+                  <DoubleAnimation Storyboard.TargetName="BottomHighlightBorder"
+                                   Storyboard.TargetProperty="Opacity"
+                                   To="1"
+                                   Duration="0:0:0.04"
+                                   EnableDependentAnimation="True"/>
                   <DoubleAnimation Storyboard.TargetName="ContentPresenter"
                                    Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
                                    To="0.92"
@@ -787,11 +822,6 @@ static Style CreateTaskbarLikeButtonStyle() {
             </VisualStateGroup>
           </VisualStateManager.VisualStateGroups>
           <Grid>
-            <Border x:Name="BackgroundBorder"
-                    Background="{TemplateBinding Background}"
-                    BorderBrush="{TemplateBinding BorderBrush}"
-                    BorderThickness="{TemplateBinding BorderThickness}"
-                    CornerRadius="{TemplateBinding CornerRadius}"/>
             <ContentPresenter x:Name="ContentPresenter"
               Content="{TemplateBinding Content}"
               ContentTemplate="{TemplateBinding ContentTemplate}"
@@ -804,8 +834,16 @@ static Style CreateTaskbarLikeButtonStyle() {
                 <ScaleTransform ScaleX="1" ScaleY="1"/>
               </ContentPresenter.RenderTransform>
             </ContentPresenter>
+            <Border x:Name="BottomHighlightBorder"
+                    Height="1"
+                    Background="{StaticResource TaskbarMenuBarButtonHighlightBottomBorderBrush}"
+                    VerticalAlignment="Bottom"
+                    HorizontalAlignment="Stretch"
+                    Margin="1,0,1,0"
+                    Opacity="0"
+                    IsHitTestVisible="False"/>
           </Grid>
-        </Grid>
+        </Border>
       </ControlTemplate>
     </Setter.Value>
   </Setter>
@@ -829,6 +867,19 @@ static void ApplyTaskbarLikeButtonChrome(Button const& btn) {
             btn.UseSystemFocusVisuals(false);
             btn.CornerRadius({4, 4, 4, 4});
         }
+    } catch (...) {}
+}
+
+static void ApplyEmptyXamlStyle(FrameworkElement const& element, const wchar_t* typeNameString) {
+    if (!element || !typeNameString) return;
+
+    try {
+        winrt::Windows::UI::Xaml::Interop::TypeName typeName;
+        typeName.Name = typeNameString;
+        typeName.Kind = winrt::Windows::UI::Xaml::Interop::TypeKind::Metadata;
+
+        Style style(typeName);
+        element.Style(style);
     } catch (...) {}
 }
 
@@ -1195,6 +1246,8 @@ static void UpdateButtonHighlightHeight() {
 static Grid BuildMenuBar() {
     Grid root;
     root.Name(L"TaskbarMenuBarRoot");
+    root.Tag(box_value(hstring(L"TaskbarMenuBarRoot")));
+    ApplyEmptyXamlStyle(root, L"Windows.UI.Xaml.Controls.Grid");
     root.VerticalAlignment(VerticalAlignment::Center);
     root.HorizontalAlignment(HorizontalAlignment::Left);
     root.IsHitTestVisible(true);
@@ -1224,6 +1277,7 @@ static Grid BuildMenuBar() {
     auto buildButton = [&](const MenuBarButton& item, size_t index) {
         Button btn;
         btn.Name(hstring(std::wstring(L"TaskbarMenuBarButton_") + std::to_wstring(index)));
+        btn.Tag(box_value(hstring(L"TaskbarMenuBarButton")));
         btn.VerticalAlignment(VerticalAlignment::Center);
         btn.HorizontalAlignment(HorizontalAlignment::Center);
         btn.HorizontalContentAlignment(ResolveButtonContentAlignment());
@@ -1247,6 +1301,8 @@ static Grid BuildMenuBar() {
     if (wrapVerticalInTwoRows) {
         Grid panel;
         panel.Name(L"TaskbarMenuBarPanel");
+        panel.Tag(box_value(hstring(L"TaskbarMenuBarPanel")));
+        ApplyEmptyXamlStyle(panel, L"Windows.UI.Xaml.Controls.Grid");
         panel.VerticalAlignment(VerticalAlignment::Center);
         panel.HorizontalAlignment(HorizontalAlignment::Left);
         panel.Margin({(double)g_settings.buttonOffsetX, (double)g_settings.buttonOffsetY, 0, 0});
@@ -1287,6 +1343,8 @@ static Grid BuildMenuBar() {
     if (wrapHorizontalInTwoColumns) {
         Grid panel;
         panel.Name(L"TaskbarMenuBarPanel");
+        panel.Tag(box_value(hstring(L"TaskbarMenuBarPanel")));
+        ApplyEmptyXamlStyle(panel, L"Windows.UI.Xaml.Controls.Grid");
         panel.VerticalAlignment(VerticalAlignment::Center);
         panel.HorizontalAlignment(HorizontalAlignment::Left);
         panel.Margin({(double)g_settings.buttonOffsetX, (double)g_settings.buttonOffsetY, 0, 0});
@@ -1326,6 +1384,8 @@ static Grid BuildMenuBar() {
 
     StackPanel panel;
     panel.Name(L"TaskbarMenuBarPanel");
+    panel.Tag(box_value(hstring(L"TaskbarMenuBarPanel")));
+    ApplyEmptyXamlStyle(panel, L"Windows.UI.Xaml.Controls.StackPanel");
     panel.Orientation(g_settings.orientation == L"vertical" ? Orientation::Vertical : Orientation::Horizontal);
     panel.VerticalAlignment(VerticalAlignment::Center);
     panel.HorizontalAlignment(HorizontalAlignment::Left);
@@ -1870,6 +1930,7 @@ static bool InjectMenuBar() {
         if (!InsertMenuBarColumn(parent, placement.insertColumn)) return false;
 
         bar.Name(L"TaskbarMenuBarHost");
+        bar.Tag(box_value(hstring(L"TaskbarMenuBarHost")));
         bar.Margin({(double)g_settings.buttonOffsetX, 0, 0, 0});
         Grid::SetColumn(bar, placement.insertColumn);
         Canvas::SetZIndex(bar, 1000);
@@ -1880,6 +1941,8 @@ static bool InjectMenuBar() {
     } else {
         Canvas canvasHost;
         canvasHost.Name(L"TaskbarMenuBarHost");
+        canvasHost.Tag(box_value(hstring(L"TaskbarMenuBarHost")));
+        ApplyEmptyXamlStyle(canvasHost, L"Windows.UI.Xaml.Controls.Canvas");
         canvasHost.HorizontalAlignment(HorizontalAlignment::Stretch);
         canvasHost.VerticalAlignment(VerticalAlignment::Stretch);
         canvasHost.IsHitTestVisible(true);
