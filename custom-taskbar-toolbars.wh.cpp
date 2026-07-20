@@ -198,9 +198,11 @@ The buttons can display text, icons, or both, and can be placed in various locat
 #include <winrt/Windows.Storage.h>
 #include <winrt/Windows.Storage.Streams.h>
 #include <winrt/Windows.UI.h>
+#include <winrt/Windows.UI.Input.h>
 #include <winrt/Windows.UI.Xaml.h>
 #include <winrt/Windows.UI.Xaml.Controls.h>
 #include <winrt/Windows.UI.Xaml.Controls.Primitives.h>
+#include <winrt/Windows.UI.Xaml.Input.h>
 #include <winrt/Windows.UI.Xaml.Interop.h>
 #include <winrt/Windows.UI.Xaml.Markup.h>
 #include <winrt/Windows.UI.Xaml.Media.h>
@@ -225,6 +227,7 @@ using namespace Windows::Storage::Streams;
 using namespace Windows::UI;
 using namespace Windows::UI::Xaml;
 using namespace Windows::UI::Xaml::Controls;
+using namespace Windows::UI::Xaml::Input;
 using namespace Windows::UI::Xaml::Markup;
 using namespace Windows::UI::Xaml::Media;
 using namespace Windows::UI::Xaml::Media::Imaging;
@@ -780,11 +783,8 @@ static Style CreateTaskbarLikeButtonStyle() {
   <Setter Property="Template">
     <Setter.Value>
       <ControlTemplate TargetType="Button">
-        <Border x:Name="Root"
-                Background="{TemplateBinding Background}"
-                BorderBrush="{TemplateBinding BorderBrush}"
-                BorderThickness="{TemplateBinding BorderThickness}"
-                CornerRadius="{TemplateBinding CornerRadius}">
+        <Grid x:Name="ExperienceToggleButtonRootPanel"
+              Background="#00FFFFFF">
           <VisualStateManager.VisualStateGroups>
             <VisualStateGroup x:Name="CommonStates">
               <VisualState x:Name="Normal">
@@ -808,12 +808,6 @@ static Style CreateTaskbarLikeButtonStyle() {
               </VisualState>
               <VisualState x:Name="PointerOver">
                 <Storyboard>
-                  <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="Background">
-                    <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource ControlFillColorSecondaryBrush}"/>
-                  </ObjectAnimationUsingKeyFrames>
-                  <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="BorderBrush">
-                    <DiscreteObjectKeyFrame KeyTime="0" Value="{StaticResource TaskbarMenuBarButtonHighlightBorderBrush}"/>
-                  </ObjectAnimationUsingKeyFrames>
                   <DoubleAnimation Storyboard.TargetName="BottomHighlightBorder"
                                    Storyboard.TargetProperty="Opacity"
                                    To="1"
@@ -833,12 +827,6 @@ static Style CreateTaskbarLikeButtonStyle() {
               </VisualState>
               <VisualState x:Name="Pressed">
                 <Storyboard>
-                  <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="Background">
-                    <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource ControlFillColorTertiaryBrush}"/>
-                  </ObjectAnimationUsingKeyFrames>
-                  <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="BorderBrush">
-                    <DiscreteObjectKeyFrame KeyTime="0" Value="{StaticResource TaskbarMenuBarButtonHighlightBorderBrush}"/>
-                  </ObjectAnimationUsingKeyFrames>
                   <DoubleAnimation Storyboard.TargetName="BottomHighlightBorder"
                                    Storyboard.TargetProperty="Opacity"
                                    To="1"
@@ -858,6 +846,16 @@ static Style CreateTaskbarLikeButtonStyle() {
               </VisualState>
             </VisualStateGroup>
           </VisualStateManager.VisualStateGroups>
+          <Border x:Name="BackgroundElement"
+                  Background="{TemplateBinding Background}"
+                  BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}"
+                  CornerRadius="{TemplateBinding CornerRadius}"
+                  IsHitTestVisible="False">
+            <Border.BackgroundTransition>
+              <BrushTransition Duration="0:0:0.083"/>
+            </Border.BackgroundTransition>
+          </Border>
           <Grid>
             <ContentPresenter x:Name="ContentPresenter"
               Content="{TemplateBinding Content}"
@@ -880,7 +878,7 @@ static Style CreateTaskbarLikeButtonStyle() {
                     Opacity="0"
                     IsHitTestVisible="False"/>
           </Grid>
-        </Border>
+        </Grid>
       </ControlTemplate>
     </Setter.Value>
   </Setter>
@@ -905,6 +903,116 @@ static void ApplyTaskbarLikeButtonChrome(Button const& btn) {
             btn.CornerRadius({4, 4, 4, 4});
         }
     } catch (...) {}
+}
+
+static Button CreateTaskbarMenuBarButtonShell() {
+    static const wchar_t kButtonXaml[] = LR"XAML(
+<Button
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    x:Name="TaskbarMenuBarButton">
+  <VisualStateManager.VisualStateGroups>
+    <VisualStateGroup x:Name="CommonStates">
+      <VisualState x:Name="Normal"/>
+      <VisualState x:Name="PointerOver"/>
+      <VisualState x:Name="Pressed"/>
+      <VisualState x:Name="Disabled"/>
+    </VisualStateGroup>
+  </VisualStateManager.VisualStateGroups>
+</Button>)XAML";
+
+    try {
+        return XamlReader::Load(hstring(kButtonXaml)).as<Button>();
+    } catch (...) {
+        Button btn;
+        btn.Name(L"TaskbarMenuBarButton");
+        return btn;
+    }
+}
+
+static void EnableTaskbarStylerButtonStates(Button const& btn) {
+    if (!btn) return;
+
+    auto isPressed = std::make_shared<bool>(false);
+    auto isHovered = std::make_shared<bool>(false);
+
+    auto updateState = [btn, isPressed, isHovered]() {
+        try {
+            hstring stateName = L"Normal";
+            if (!btn.IsEnabled()) {
+                stateName = L"Disabled";
+            } else if (*isPressed) {
+                stateName = L"Pressed";
+            } else if (*isHovered) {
+                stateName = L"PointerOver";
+            }
+
+            if (auto overrides = btn.try_as<winrt::Windows::UI::Xaml::IFrameworkElementOverrides2>()) {
+                if (overrides.GoToElementStateCore(stateName, true)) {
+                    return;
+                }
+            }
+
+            VisualStateManager::GoToState(btn, stateName, true);
+        } catch (...) {}
+    };
+
+    btn.PointerEntered(PointerEventHandler([isHovered, updateState](
+        IInspectable const&, PointerRoutedEventArgs const&) {
+        *isHovered = true;
+        updateState();
+    }));
+
+    btn.PointerExited(PointerEventHandler([isPressed, isHovered, updateState](
+        IInspectable const&, PointerRoutedEventArgs const&) {
+        *isPressed = false;
+        *isHovered = false;
+        updateState();
+    }));
+
+    btn.PointerPressed(PointerEventHandler([isPressed, updateState](
+        IInspectable const& sender, PointerRoutedEventArgs const& e) {
+        if (auto elem = sender.try_as<UIElement>()) {
+            elem.CapturePointer(e.Pointer());
+        }
+        *isPressed = true;
+        updateState();
+    }));
+
+    btn.PointerReleased(PointerEventHandler([isPressed, isHovered, updateState](
+        IInspectable const& sender, PointerRoutedEventArgs const& e) {
+        bool actuallyHovered = false;
+        if (auto elem = sender.try_as<UIElement>()) {
+            elem.ReleasePointerCapture(e.Pointer());
+            try {
+                auto size = elem.RenderSize();
+                auto pos = e.GetCurrentPoint(elem).Position();
+                actuallyHovered =
+                    pos.X >= 0 && pos.X <= size.Width &&
+                    pos.Y >= 0 && pos.Y <= size.Height;
+            } catch (...) {}
+        }
+
+        *isPressed = false;
+        *isHovered = actuallyHovered;
+        updateState();
+    }));
+
+    btn.PointerCanceled(PointerEventHandler([isPressed, isHovered, updateState](
+        IInspectable const&, PointerRoutedEventArgs const&) {
+        *isPressed = false;
+        *isHovered = false;
+        updateState();
+    }));
+
+    btn.PointerCaptureLost(PointerEventHandler([isPressed, isHovered, updateState](
+        IInspectable const&, PointerRoutedEventArgs const&) {
+        *isPressed = false;
+        *isHovered = false;
+        updateState();
+    }));
+
+    updateState();
 }
 
 static void ApplyEmptyXamlStyle(FrameworkElement const& element, const wchar_t* typeNameString) {
@@ -1313,8 +1421,8 @@ static Grid BuildMenuBar() {
     bool wrapHorizontalInTwoColumns = g_settings.orientation == L"horizontal" && !taskbarHorizontal && visibleItems.size() > 2;
 
     auto buildButton = [&](const MenuBarButton& item, size_t index) {
-        Button btn;
-        btn.Name(hstring(std::wstring(L"TaskbarMenuBarButton_") + std::to_wstring(index)));
+        Button btn = CreateTaskbarMenuBarButtonShell();
+        btn.Name(L"TaskbarMenuBarButton");
         btn.Tag(box_value(hstring(L"TaskbarMenuBarButton")));
         btn.VerticalAlignment(VerticalAlignment::Center);
         btn.HorizontalAlignment(HorizontalAlignment::Center);
@@ -1327,6 +1435,7 @@ static Grid BuildMenuBar() {
         btn.Padding({(double)g_settings.buttonPaddingX, (double)g_settings.buttonPaddingY,
                      (double)g_settings.buttonPaddingX, (double)g_settings.buttonPaddingY});
         ApplyTaskbarLikeButtonChrome(btn);
+        EnableTaskbarStylerButtonStates(btn);
         btn.Click([action = item.action](auto const&, auto const&) {
             ExecuteAction(action);
         });
