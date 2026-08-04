@@ -211,6 +211,11 @@ struct SectionSeparatorEntry {
     int kind;
 };
 
+struct CollapsedGridRowEntry {
+    winrt::weak_ref<wuc::RowDefinition> rowDefinition;
+    wux::GridLength originalHeight;
+};
+
 std::vector<FlattenedSourceEntry>& g_flattenedSources =
     *new std::vector<FlattenedSourceEntry>();
 std::vector<SemanticZoomEntry>& g_hookedSemanticZooms =
@@ -227,6 +232,8 @@ std::vector<ScrollBarEntry>& g_scrollBarModeScrollBars =
     *new std::vector<ScrollBarEntry>();
 std::vector<SectionSeparatorEntry>& g_sectionSeparators =
     *new std::vector<SectionSeparatorEntry>();
+std::vector<CollapsedGridRowEntry>& g_collapsedGridRows =
+    *new std::vector<CollapsedGridRowEntry>();
 
 struct TimerState {
     wux::DispatcherTimer xamlTraversalTimer{nullptr};
@@ -1145,6 +1152,33 @@ void ApplyScrollBarMode(wuc::ScrollViewer const& scrollViewer) {
         scrollViewer, wuc::ScrollBarVisibility::Visible);
 }
 
+void CollapseSearchBarGridRow(wux::FrameworkElement const& element) {
+    auto parent = wux::Media::VisualTreeHelper::GetParent(element).try_as<wuc::Grid>();
+    if (!parent) {
+        return;
+    }
+
+    uint32_t row = wuc::Grid::GetRow(element);
+    auto rowDefs = parent.RowDefinitions();
+    if (row >= rowDefs.Size()) {
+        return;
+    }
+
+    auto rowDef = rowDefs.GetAt(row);
+
+    for (auto const& entry : g_collapsedGridRows) {
+        if (entry.rowDefinition.get() == rowDef) {
+            return;
+        }
+    }
+
+    g_collapsedGridRows.push_back({
+        winrt::make_weak(rowDef),
+        rowDef.Height(),
+    });
+    rowDef.Height({0, wux::GridUnitType::Pixel});
+}
+
 void HideStartMenuElement(wux::FrameworkElement const& element) {
     ApplyHeaderText(element);
 
@@ -1183,6 +1217,10 @@ void HideStartMenuElement(wux::FrameworkElement const& element) {
          IsRecommendedHeaderElement(element)) ||
         (g_settings.hideTopLevelHeader && IsAllAppsTopHeaderElement(element))) {
         CollapseAndKeepElement(element);
+    }
+
+    if (g_settings.hideSearchBar && IsSearchBarElement(element)) {
+        CollapseSearchBarGridRow(element);
     }
 
     if (auto itemsWrapGrid = element.try_as<wuc::ItemsWrapGrid>()) {
@@ -1558,6 +1596,20 @@ void RemoveSectionSeparators() {
     RemoveSectionSeparatorsFromCurrentXamlTree();
 }
 
+void RestoreCollapsedGridRows() {
+    for (auto& entry : g_collapsedGridRows) {
+        try {
+            auto rowDef = entry.rowDefinition.get();
+            if (!rowDef) {
+                continue;
+            }
+            rowDef.Height(entry.originalHeight);
+        } catch (...) {
+            Wh_Log(L"RestoreCollapsedGridRows error: %08X", winrt::to_hresult());
+        }
+    }
+}
+
 void ClearXamlState() {
     g_flattenedSources.clear();
     g_hookedSemanticZooms.clear();
@@ -1567,6 +1619,7 @@ void ClearXamlState() {
     g_scrollBarModeScrollViewers.clear();
     g_scrollBarModeScrollBars.clear();
     g_sectionSeparators.clear();
+    g_collapsedGridRows.clear();
 }
 
 void UninstallXamlTraversal() {
@@ -1579,6 +1632,7 @@ void UninstallXamlTraversal() {
         RestoreItemsWrapGrids();
         RestoreHeaderTextElements();
         RestoreCollapsedElements();
+        RestoreCollapsedGridRows();
         RestoreFlattenedSources();
         ClearXamlState();
     } catch (...) {
