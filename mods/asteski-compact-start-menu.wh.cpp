@@ -214,6 +214,7 @@ struct SectionSeparatorEntry {
 struct CollapsedGridRowEntry {
     winrt::weak_ref<wuc::RowDefinition> rowDefinition;
     wux::GridLength originalHeight;
+    int64_t heightToken = 0;
 };
 
 std::vector<FlattenedSourceEntry>& g_flattenedSources =
@@ -1153,30 +1154,57 @@ void ApplyScrollBarMode(wuc::ScrollViewer const& scrollViewer) {
 }
 
 void CollapseSearchBarGridRow(wux::FrameworkElement const& element) {
-    auto parent = wux::Media::VisualTreeHelper::GetParent(element).try_as<wuc::Grid>();
-    if (!parent) {
-        return;
-    }
+    // Walk up the visual tree until we find a Grid ancestor that has explicit
+    // RowDefinitions for the row containing the search bar.
+    wux::DependencyObject child = element;
 
-    uint32_t row = wuc::Grid::GetRow(element);
-    auto rowDefs = parent.RowDefinitions();
-    if (row >= rowDefs.Size()) {
-        return;
-    }
-
-    auto rowDef = rowDefs.GetAt(row);
-
-    for (auto const& entry : g_collapsedGridRows) {
-        if (entry.rowDefinition.get() == rowDef) {
+    for (int level = 0; level < 8; level++) {
+        auto parentDO = wux::Media::VisualTreeHelper::GetParent(child);
+        if (!parentDO) {
             return;
         }
-    }
 
-    g_collapsedGridRows.push_back({
-        winrt::make_weak(rowDef),
-        rowDef.Height(),
-    });
-    rowDef.Height({0, wux::GridUnitType::Pixel});
+        if (auto grid = parentDO.try_as<wuc::Grid>()) {
+            if (auto childFE = child.try_as<wux::FrameworkElement>()) {
+                uint32_t row = wuc::Grid::GetRow(childFE);
+                auto rowDefs = grid.RowDefinitions();
+
+                if (row < rowDefs.Size()) {
+                    auto rowDef = rowDefs.GetAt(row);
+
+                    for (auto const& entry : g_collapsedGridRows) {
+                        if (entry.rowDefinition.get() == rowDef) {
+                            return;
+                        }
+                    }
+
+                    CollapsedGridRowEntry entry{
+                        winrt::make_weak(rowDef),
+                        rowDef.Height(),
+                    };
+
+                    entry.heightToken = rowDef.RegisterPropertyChangedCallback(
+                        wuc::RowDefinition::HeightProperty(),
+                        [](wux::DependencyObject const& sender,
+                           wux::DependencyProperty const&) {
+                            if (auto rowDef = sender.try_as<wuc::RowDefinition>()) {
+                                auto h = rowDef.Height();
+                                if (h.Value != 0 ||
+                                    h.GridUnitType != wux::GridUnitType::Pixel) {
+                                    rowDef.Height({0, wux::GridUnitType::Pixel});
+                                }
+                            }
+                        });
+
+                    rowDef.Height({0, wux::GridUnitType::Pixel});
+                    g_collapsedGridRows.push_back(std::move(entry));
+                    return;
+                }
+            }
+        }
+
+        child = parentDO;
+    }
 }
 
 void HideStartMenuElement(wux::FrameworkElement const& element) {
@@ -1602,6 +1630,10 @@ void RestoreCollapsedGridRows() {
             auto rowDef = entry.rowDefinition.get();
             if (!rowDef) {
                 continue;
+            }
+            if (entry.heightToken) {
+                rowDef.UnregisterPropertyChangedCallback(
+                    wuc::RowDefinition::HeightProperty(), entry.heightToken);
             }
             rowDef.Height(entry.originalHeight);
         } catch (...) {
