@@ -310,8 +310,10 @@ bool IsRecommendedHeaderElement(wux::FrameworkElement const& element) {
 
 bool IsSearchBarElement(wux::FrameworkElement const& element) {
     auto name = element.Name();
+    auto className = winrt::get_class_name(element);
     return name == L"StartMenuSearchBox" ||
-           name == L"SearchBoxElement";
+           className == L"StartDocked.SearchBoxToggleButton" ||
+           className == L"StartMenu.SearchBoxToggleButton";
 }
 
 bool IsAllAppsTopHeaderElement(wux::FrameworkElement const& element) {
